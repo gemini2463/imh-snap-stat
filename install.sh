@@ -78,7 +78,7 @@ if [[ "${1:-}" == "--uninstall" ]]; then
             rm -f "/usr/local/cpanel/whostmgr/docroot/addon_plugins/$SCRIPT_NAME.png"
             # rm -f "/var/cpanel/apps/$SCRIPT_NAME.conf"
             if [[ -x "/usr/local/cpanel/bin/unregister_appconfig" ]]; then
-                /usr/local/cpanel/bin/unregister_appconfig $SCRIPT_NAME || true
+                /usr/local/cpanel/bin/unregister_appconfig "$SCRIPT_NAME" || true
             fi
             ;;
         "cwp")
