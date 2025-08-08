@@ -220,20 +220,20 @@ install_package() {
     local package=$1
 
     echo ""
-    print_message "$YELLOW" "Checking repositories for $package..."
+    print_message "$YELLOW" "Checking repositories for imh-sys-snap..."
 
     if command_exists yum; then
-        if yum install -y "$package"; then
-            print_message "$GREEN" "$package yum repository check complete."
+        if yum install -y "imh-sys-snap"; then
+            print_message "$GREEN" "imh-sys-snap yum repository check complete."
             return 0
         fi
-        print_message "$YELLOW" "Package $package not found in yum. Attempting manual installation."
+        print_message "$YELLOW" "Package imh-sys-snap not found in yum. Attempting manual installation."
     elif command_exists apt-get; then
-        if apt-get update && apt-get install -y "$package"; then
-            print_message "$GREEN" "$package apt repository check complete."
+        if apt-get update && apt-get install -y "imh-sys-snap"; then
+            print_message "$GREEN" "imh-sys-snap apt repository check complete."
             return 0
         fi
-        print_message "$YELLOW" "Package $package not found in apt. Attempting manual installation."
+        print_message "$YELLOW" "Package imh-sys-snap not found in apt. Attempting manual installation."
     else
         error_exit "No supported package manager found"
     fi
@@ -244,7 +244,7 @@ install_package() {
         || error_exit "Failed to download sys-snap.pl"
     chmod 744 /opt/imh-snap-stat/bin/sys-snap.pl
     echo y | /usr/bin/perl /opt/imh-snap-stat/bin/sys-snap.pl --start \
-        || error_exit "Failed to install $package via sys-snap.pl"
+        || error_exit "Failed to install sys-snap.pl"
 }
 
 # Function to install for cPanel
