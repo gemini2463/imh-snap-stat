@@ -239,11 +239,11 @@ install_package() {
     fi
 
     # Fallback: manual install
-    mkdir -p /opt/imh-snap-stat/bin || error_exit "Could not create bin directory"
-    wget -O /opt/imh-snap-stat/bin/sys-snap.pl $BASE_URL/sys-snap.pl \
+    mkdir -p /opt/imh-sys-snap/bin || error_exit "Could not create bin directory"
+    wget -O /opt/imh-sys-snap/bin/sys-snap.pl $BASE_URL/sys-snap.pl \
         || error_exit "Failed to download sys-snap.pl"
-    chmod 744 /opt/imh-snap-stat/bin/sys-snap.pl
-    echo y | /usr/bin/perl /opt/imh-snap-stat/bin/sys-snap.pl --start \
+    chmod 744 /opt/imh-sys-snap/bin/sys-snap.pl
+    echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start \
         || error_exit "Failed to install sys-snap.pl"
 }
 

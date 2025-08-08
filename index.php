@@ -621,17 +621,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array
     $action = $_POST['action'];
     //'Stop' didn't work so good in testing.
     if ($action === 'stop') {
-        $stop_cmd = "echo y | /usr/bin/perl /opt/imh-snap-stat/bin/sys-snap.pl --stop 2>&1";
+        $stop_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --stop 2>&1";
         //$action_output = shell_exec($stop_cmd);
     } elseif ($action === 'start') {
-        $start_cmd = "echo y | /usr/bin/perl /opt/imh-snap-stat/bin/sys-snap.pl --start 2>&1";
+        $start_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start 2>&1";
         $action_output = shell_exec($start_cmd);
     }
 }
 
 
 // Check current status
-$status_cmd = '/usr/bin/perl /opt/imh-snap-stat/bin/sys-snap.pl --check 2>&1';
+$status_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --check 2>&1';
 $status_output = shell_exec($status_cmd);
 $is_running = false;
 $pid = null;
@@ -769,7 +769,7 @@ echo '<h2 class="imh-spacer">Scores from ' . sprintf('%02d:%02d', $start_hour, $
 $start_time_arg = sprintf('%02d:%02d', $start_hour, $start_min);
 $end_time_arg = sprintf('%02d:%02d', $end_hour, $end_min);
 
-$sys_snap_cmd = '/usr/bin/perl /opt/imh-snap-stat/bin/sys-snap.pl --print ' .
+$sys_snap_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --print ' .
     escapeshellarg($start_time_arg) . ' ' .
     escapeshellarg($end_time_arg) . ' -v 2>&1';
 
