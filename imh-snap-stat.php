@@ -1,5 +1,5 @@
 <?php
-// System Snapshot
+// SnapStat
 /**
  * sys-snap Web Interface for cPanel/WHM and CWP
  *
@@ -544,7 +544,7 @@ if ($isCPanelServer) {
 // ==========================
 
 $img_src = $isCWPServer ? 'design/img/imh-snap-stat.png' : 'imh-snap-stat.png';
-echo '<h1 class="imh-title"><img src="' . htmlspecialchars($img_src) . '" alt="sys-snap" class="imh-title-img" />System Snapshot</h1>';
+echo '<h1 class="imh-title"><img src="' . htmlspecialchars($img_src) . '" alt="sys-snap" class="imh-title-img" />SnapStat</h1>';
 
 
 
