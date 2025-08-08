@@ -3,7 +3,7 @@
 /**
  * sys-snap Web Interface for cPanel/WHM and CWP
  *
- * Provides a web interface to view and manage sys-snap system snapshots,
+ * Provides a web interface to view sys-snap system snapshots,
  * and display 24-hour server statistics.
  *
  * Compatible with:
@@ -551,8 +551,8 @@ echo '<h1 class="imh-title"><img src="' . htmlspecialchars($img_src) . '" alt="s
 // This is the tab selector for the two main sections: sys-snap and 24-hour statistics.
 
 echo '<div class="tabs-nav" id="imh-tabs-nav">
-    <button type="button" class="active" data-tab="tab-sys-snap" aria-label="System Snapshot tab">System Snapshot</button>
-    <button type="button" data-tab="tab-loadavg" aria-label="24 Hour Statistics tab">24 Hour Statistics</button>
+    <button type="button" class="active" data-tab="tab-sys-snap" aria-label="System Snapshot tab">System Snapshot (sys-snap)</button>
+    <button type="button" data-tab="tab-loadavg" aria-label="24 Hour Statistics tab">24 Hour Statistics (sysstat)</button>
 </div>';
 
 
