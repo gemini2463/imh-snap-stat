@@ -708,21 +708,6 @@ foreach (glob($plugin_dir . 'imh-*.php') as $filename) {
 c8b15737f85b76e1510f7321bdf4b92bdc61e4790d5fec3bef0b142b0efe8cbf  imh-plugins.php
 </file>
 
-<file path="imh-snap-stat.conf">
-service=whostmgr
-url=/cgi/imh-snap-stat/index.php
-user=root
-phpHandler=/php/83/etc
-features=any
-displayname=SnapStat
-acls=any
-entryurl=imh-snap-stat/index.php
-target=_self
-icon=imh-snap-stat.png
-name=imh-snap-stat
-desc=24-Hour System Statistics and Analysis Tool
-</file>
-
 <file path="imh-snap-stat.js">
 (function(){const e=document.createElement("link").relList;if(e&&e.supports&&e.supports("modulepreload"))return;for(const o of document.querySelectorAll('link[rel="modulepreload"]'))s(o);new MutationObserver(o=>{for(const c of o)if(c.type==="childList")for(const u of c.addedNodes)u.tagName==="LINK"&&u.rel==="modulepreload"&&s(u)}).observe(document,{childList:!0,subtree:!0});function n(o){const c={};return o.integrity&&(c.integrity=o.integrity),o.referrerPolicy&&(c.referrerPolicy=o.referrerPolicy),o.crossOrigin==="use-credentials"?c.credentials="include":o.crossOrigin==="anonymous"?c.credentials="omit":c.credentials="same-origin",c}function s(o){if(o.ep)return;o.ep=!0;const c=n(o);fetch(o.href,c)}})();var iu={exports:{}},Ss={};/**
  * @license React
@@ -794,57 +779,6 @@ Error generating stack: `+l.message+`
 
 <file path="imh-snap-stat.js.sha256">
 d40cf183dd7bb99509d8b41f4d1d8ddadca39769bd5751076a942bb67ca92804  imh-snap-stat.js
-</file>
-
-<file path="README.md">
-# SnapStat (imh-snap-stat), v0.1.6
-
-sys-snap and sysstat Web Interface for cPanel/WHM and CWP
-
-- cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
-- CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
-
-# Installation
-
-- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | sh`
-- Maybe soon?: `curl -fsSL https://repo-ded.inmotionhosting.com/imh-plugins/imh-snap-stat/0.1.4/install.sh | sh`
-
-# Files
-
-## Shell installer
-
-- install.sh
-
-## Main script
-
-- index.php - Identical to `imh-snap-stat.php`.
-- index.php.sha256 - `sha256sum index.php > index.php.sha256`
-- imh-snap-stat.php - Identical to `index.php`.
-- imh-snap-stat.php.sha256 - `sha256sum imh-snap-stat.php > imh-snap-stat.php.sha256`
-
-## Javascript
-
-- imh-snap-stat.js - Bundle React or any other javascript in this file.
-- imh-snap-stat.js.sha256 - `sha256sum imh-snap-stat.js > imh-snap-stat.js.sha256`
-
-## Icon
-
-- imh-snap-stat.png - [48x48 png image](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-plugin-files/#icons)
-- imh-snap-stat.png.sha256 - `sha256sum imh-snap-stat.png > imh-snap-stat.png.sha256`
-
-## cPanel conf
-
-- imh-snap-stat.conf - [AppConfig Configuration File](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-appconfig-configuration-file)
-- imh-snap-stat.conf.sha256 - `sha256sum imh-snap-stat.conf > imh-snap-stat.conf.sha256`
-
-## CWP include
-
-- imh-plugins.php - [CWP include](https://wiki.centos-webpanel.com/how-to-build-a-cwp-module)
-- imh-plugins.php.sha256 - `sha256sum imh-plugins.php > imh-plugins.php.sha256`
-
-## sha256 one-liner
-
-- `for file in index.php imh-plugins.php imh-snap-stat.conf imh-snap-stat.js imh-snap-stat.php imh-snap-stat.png; do sha256sum "$file" > "$file.sha256"; done`
 </file>
 
 <file path="sys-snap.pl">
@@ -1655,8 +1589,74 @@ sub module_sanity_check {
 }
 </file>
 
+<file path="imh-snap-stat.conf">
+service=whostmgr
+url=/cgi/imh-snap-stat/index.php
+user=root
+phpHandler=/php/83/etc
+features=any
+displayname=SnapStat
+acls=any
+entryurl=imh-snap-stat/index.php
+target=_self
+icon=imh-snap-stat.png
+name=imh-snap-stat
+description=24-Hour System Statistics and Analysis Tool
+</file>
+
+<file path="README.md">
+# SnapStat (imh-snap-stat), v0.1.6
+
+sys-snap and sysstat Web Interface for cPanel/WHM and CWP
+
+- cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
+- CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
+
+# Installation
+
+- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | sh`
+- Maybe soon?: `curl -fsSL https://repo-ded.inmotionhosting.com/imh-plugins/imh-snap-stat/0.1.4/install.sh | sh`
+
+# Files
+
+## Shell installer
+
+- install.sh
+
+## Main script
+
+- index.php - Identical to `imh-snap-stat.php`.
+- index.php.sha256 - `sha256sum index.php > index.php.sha256`
+- imh-snap-stat.php - Identical to `index.php`.
+- imh-snap-stat.php.sha256 - `sha256sum imh-snap-stat.php > imh-snap-stat.php.sha256`
+
+## Javascript
+
+- imh-snap-stat.js - Bundle React or any other javascript in this file.
+- imh-snap-stat.js.sha256 - `sha256sum imh-snap-stat.js > imh-snap-stat.js.sha256`
+
+## Icon
+
+- imh-snap-stat.png - [48x48 png image](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-plugin-files/#icons)
+- imh-snap-stat.png.sha256 - `sha256sum imh-snap-stat.png > imh-snap-stat.png.sha256`
+
+## cPanel conf
+
+- imh-snap-stat.conf - [AppConfig Configuration File](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-appconfig-configuration-file)
+- imh-snap-stat.conf.sha256 - `sha256sum imh-snap-stat.conf > imh-snap-stat.conf.sha256`
+
+## CWP include
+
+- imh-plugins.php - [CWP include](https://wiki.centos-webpanel.com/how-to-build-a-cwp-module)
+- imh-plugins.php.sha256 - `sha256sum imh-plugins.php > imh-plugins.php.sha256`
+
+## sha256 one-liner
+
+- `for file in index.php imh-plugins.php imh-snap-stat.conf imh-snap-stat.js imh-snap-stat.php imh-snap-stat.png; do sha256sum "$file" > "$file.sha256"; done`
+</file>
+
 <file path="imh-snap-stat.conf.sha256">
-f49033f926088ab92300effc2557746cadc50cdfb4d22dcd7a31bfb86686d4df  imh-snap-stat.conf
+65dcc89cdb3c127fbd5611dee880780fac191782f1885c6e193c47be8ab03960  imh-snap-stat.conf
 </file>
 
 <file path="index.php">
