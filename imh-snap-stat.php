@@ -11,7 +11,7 @@
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.5
+ * Version: 0.1.6
  */
 
 
@@ -114,7 +114,7 @@ function imh_safe_cache_filename($tag)
 function imh_guess_sar_interval()
 {
     $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
-    $out = shell_exec($cmd);
+    $out = safe_shell_exec($cmd, 3);
     if (!is_string($out)) {
         return 600; // fallback if shell_exec failed
     }
@@ -155,6 +155,73 @@ function imh_cached_shell_exec($tag, $command, $sar_interval)
 
 
 
+// Runs a shell command safely with a timeout, preventing hangs.
+
+function safe_shell_exec(string $command, int $timeout = 3): string
+{
+    static $timeout_bin = null;
+    if ($timeout_bin === null) {
+        // Find the timeout binary path once
+        $found = trim(shell_exec('command -v timeout 2>/dev/null') ?: '');
+        $timeout_bin = $found !== '' ? $found : false;
+    }
+
+    if ($timeout_bin) {
+        // Only escape the path to timeout, not the actual command
+        $cmd = escapeshellarg($timeout_bin) . ' ' . (int)$timeout . 's ' . $command;
+        $out = shell_exec($cmd);
+        return is_string($out) ? $out : '';
+    }
+
+    // Fallback: no timeout binary, use proc_open() with stream_select timeout
+    $descriptorspec = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w']
+    ];
+    $process = proc_open($command, $descriptorspec, $pipes);
+    if (!is_resource($process)) return '';
+
+    $output = '';
+    $start = time();
+    $readStreams = [$pipes[1], $pipes[2]];
+
+    while (!empty($readStreams) && (time() - $start) < $timeout) {
+        $readCopy = $readStreams;
+        $write = null;
+        $except = null;
+
+        if (stream_select($readCopy, $write, $except, 1) > 0) {
+            foreach ($readCopy as $stream) {
+                $chunk = stream_get_contents($stream);
+                if ($chunk !== false) {
+                    $output .= $chunk;
+                }
+                $key = array_search($stream, $readStreams, true);
+                unset($readStreams[$key]);
+            }
+        }
+    }
+
+    foreach ($pipes as $pipe) {
+        fclose($pipe);
+    }
+    proc_terminate($process);
+    proc_close($process);
+
+    // Return raw output (don't trim so whitespace/newlines are preserved)
+    return is_string($output) ? $output : '';
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -183,9 +250,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_time'])) {
 
 // Find local time
 
-$server_time_full = shell_exec('timedatectl');
-$server_time_lines = explode("\n", trim($server_time_full));
-$server_time = $server_time_lines[0] ?? '';
+$server_time_full = safe_shell_exec('timedatectl', 2);
+if (!$server_time_full) {
+    $server_time = 'Time unavailable';
+} else {
+    $server_time_lines = explode("\n", trim($server_time_full));
+    $server_time = $server_time_lines[0] ?? 'Time unavailable';
+}
 
 
 
@@ -622,17 +693,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array
     //'Stop' didn't work so good in testing.
     if ($action === 'stop') {
         $stop_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --stop 2>&1";
-        //$action_output = shell_exec($stop_cmd);
+        //$action_output = safe_shell_exec($stop_cmd, 5);  
     } elseif ($action === 'start') {
         $start_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start 2>&1";
-        $action_output = shell_exec($start_cmd);
+        $action_output = safe_shell_exec($start_cmd, 5);
     }
 }
 
 
 // Check current status
 $status_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --check 2>&1';
-$status_output = shell_exec($status_cmd);
+$status_output = safe_shell_exec($status_cmd, 3);
 $is_running = false;
 $pid = null;
 
@@ -668,7 +739,7 @@ echo '<div class="imh-box">';
 if ($is_running) {
     $etime = null;
     if ($pid) {
-        $etime = trim(shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null'));
+        $etime = trim(safe_shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null', 2));
     }
     $runtime_str = '';
     if (ctype_digit($etime)) {

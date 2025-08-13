@@ -720,6 +720,7 @@ entryurl=imh-snap-stat/index.php
 target=_self
 icon=imh-snap-stat.png
 name=imh-snap-stat
+desc=24-Hour System Statistics and Analysis Tool
 </file>
 
 <file path="imh-snap-stat.js">
@@ -796,44 +797,53 @@ d40cf183dd7bb99509d8b41f4d1d8ddadca39769bd5751076a942bb67ca92804  imh-snap-stat.
 </file>
 
 <file path="README.md">
-# SnapStat (imh-snap-stat), v0.1.5
+# SnapStat (imh-snap-stat), v0.1.6
+
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
 - cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
 - CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
 
 # Installation
+
 - Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | sh`
 - Maybe soon?: `curl -fsSL https://repo-ded.inmotionhosting.com/imh-plugins/imh-snap-stat/0.1.4/install.sh | sh`
 
 # Files
 
 ## Shell installer
+
 - install.sh
 
 ## Main script
+
 - index.php - Identical to `imh-snap-stat.php`.
 - index.php.sha256 - `sha256sum index.php > index.php.sha256`
 - imh-snap-stat.php - Identical to `index.php`.
 - imh-snap-stat.php.sha256 - `sha256sum imh-snap-stat.php > imh-snap-stat.php.sha256`
 
 ## Javascript
+
 - imh-snap-stat.js - Bundle React or any other javascript in this file.
 - imh-snap-stat.js.sha256 - `sha256sum imh-snap-stat.js > imh-snap-stat.js.sha256`
 
 ## Icon
+
 - imh-snap-stat.png - [48x48 png image](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-plugin-files/#icons)
 - imh-snap-stat.png.sha256 - `sha256sum imh-snap-stat.png > imh-snap-stat.png.sha256`
 
 ## cPanel conf
+
 - imh-snap-stat.conf - [AppConfig Configuration File](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-appconfig-configuration-file)
 - imh-snap-stat.conf.sha256 - `sha256sum imh-snap-stat.conf > imh-snap-stat.conf.sha256`
 
 ## CWP include
+
 - imh-plugins.php - [CWP include](https://wiki.centos-webpanel.com/how-to-build-a-cwp-module)
 - imh-plugins.php.sha256 - `sha256sum imh-plugins.php > imh-plugins.php.sha256`
 
 ## sha256 one-liner
+
 - `for file in index.php imh-plugins.php imh-snap-stat.conf imh-snap-stat.js imh-snap-stat.php imh-snap-stat.png; do sha256sum "$file" > "$file.sha256"; done`
 </file>
 
@@ -1646,7 +1656,7 @@ sub module_sanity_check {
 </file>
 
 <file path="imh-snap-stat.conf.sha256">
-b55699e92647861aa4f52be3bfe794ba560af31eb3ccd463082668a0f2bf8076  imh-snap-stat.conf
+f49033f926088ab92300effc2557746cadc50cdfb4d22dcd7a31bfb86686d4df  imh-snap-stat.conf
 </file>
 
 <file path="index.php">
@@ -1663,7 +1673,7 @@ b55699e92647861aa4f52be3bfe794ba560af31eb3ccd463082668a0f2bf8076  imh-snap-stat.
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.5
+ * Version: 0.1.6
  */
 
 
@@ -1766,7 +1776,7 @@ function imh_safe_cache_filename($tag)
 function imh_guess_sar_interval()
 {
     $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
-    $out = shell_exec($cmd);
+    $out = safe_shell_exec($cmd, 3);
     if (!is_string($out)) {
         return 600; // fallback if shell_exec failed
     }
@@ -1807,6 +1817,73 @@ function imh_cached_shell_exec($tag, $command, $sar_interval)
 
 
 
+// Runs a shell command safely with a timeout, preventing hangs.
+
+function safe_shell_exec(string $command, int $timeout = 3): string
+{
+    static $timeout_bin = null;
+    if ($timeout_bin === null) {
+        // Find the timeout binary path once
+        $found = trim(shell_exec('command -v timeout 2>/dev/null') ?: '');
+        $timeout_bin = $found !== '' ? $found : false;
+    }
+
+    if ($timeout_bin) {
+        // Only escape the path to timeout, not the actual command
+        $cmd = escapeshellarg($timeout_bin) . ' ' . (int)$timeout . 's ' . $command;
+        $out = shell_exec($cmd);
+        return is_string($out) ? $out : '';
+    }
+
+    // Fallback: no timeout binary, use proc_open() with stream_select timeout
+    $descriptorspec = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w']
+    ];
+    $process = proc_open($command, $descriptorspec, $pipes);
+    if (!is_resource($process)) return '';
+
+    $output = '';
+    $start = time();
+    $readStreams = [$pipes[1], $pipes[2]];
+
+    while (!empty($readStreams) && (time() - $start) < $timeout) {
+        $readCopy = $readStreams;
+        $write = null;
+        $except = null;
+
+        if (stream_select($readCopy, $write, $except, 1) > 0) {
+            foreach ($readCopy as $stream) {
+                $chunk = stream_get_contents($stream);
+                if ($chunk !== false) {
+                    $output .= $chunk;
+                }
+                $key = array_search($stream, $readStreams, true);
+                unset($readStreams[$key]);
+            }
+        }
+    }
+
+    foreach ($pipes as $pipe) {
+        fclose($pipe);
+    }
+    proc_terminate($process);
+    proc_close($process);
+
+    // Return raw output (don't trim so whitespace/newlines are preserved)
+    return is_string($output) ? $output : '';
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1835,9 +1912,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_time'])) {
 
 // Find local time
 
-$server_time_full = shell_exec('timedatectl');
-$server_time_lines = explode("\n", trim($server_time_full));
-$server_time = $server_time_lines[0] ?? '';
+$server_time_full = safe_shell_exec('timedatectl', 2);
+if (!$server_time_full) {
+    $server_time = 'Time unavailable';
+} else {
+    $server_time_lines = explode("\n", trim($server_time_full));
+    $server_time = $server_time_lines[0] ?? 'Time unavailable';
+}
 
 
 
@@ -2274,17 +2355,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array
     //'Stop' didn't work so good in testing.
     if ($action === 'stop') {
         $stop_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --stop 2>&1";
-        //$action_output = shell_exec($stop_cmd);
+        //$action_output = safe_shell_exec($stop_cmd, 5);  
     } elseif ($action === 'start') {
         $start_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start 2>&1";
-        $action_output = shell_exec($start_cmd);
+        $action_output = safe_shell_exec($start_cmd, 5);
     }
 }
 
 
 // Check current status
 $status_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --check 2>&1';
-$status_output = shell_exec($status_cmd);
+$status_output = safe_shell_exec($status_cmd, 3);
 $is_running = false;
 $pid = null;
 
@@ -2320,7 +2401,7 @@ echo '<div class="imh-box">';
 if ($is_running) {
     $etime = null;
     if ($pid) {
-        $etime = trim(shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null'));
+        $etime = trim(safe_shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null', 2));
     }
     $runtime_str = '';
     if (ctype_digit($etime)) {
@@ -3059,7 +3140,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="index.php.sha256">
-2fc1507a2c26664a7bd0a2bdf47cb1306d3853e6b83541331e193b3f4cee84e5  index.php
+96f51dae87cad3f7892ed573e2cafcb3e51b6c8a11c3974ec7ba74b26a637795  index.php
 </file>
 
 <file path="imh-snap-stat.php">
@@ -3076,7 +3157,7 @@ if ($isCPanelServer) {
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.5
+ * Version: 0.1.6
  */
 
 
@@ -3179,7 +3260,7 @@ function imh_safe_cache_filename($tag)
 function imh_guess_sar_interval()
 {
     $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
-    $out = shell_exec($cmd);
+    $out = safe_shell_exec($cmd, 3);
     if (!is_string($out)) {
         return 600; // fallback if shell_exec failed
     }
@@ -3220,6 +3301,73 @@ function imh_cached_shell_exec($tag, $command, $sar_interval)
 
 
 
+// Runs a shell command safely with a timeout, preventing hangs.
+
+function safe_shell_exec(string $command, int $timeout = 3): string
+{
+    static $timeout_bin = null;
+    if ($timeout_bin === null) {
+        // Find the timeout binary path once
+        $found = trim(shell_exec('command -v timeout 2>/dev/null') ?: '');
+        $timeout_bin = $found !== '' ? $found : false;
+    }
+
+    if ($timeout_bin) {
+        // Only escape the path to timeout, not the actual command
+        $cmd = escapeshellarg($timeout_bin) . ' ' . (int)$timeout . 's ' . $command;
+        $out = shell_exec($cmd);
+        return is_string($out) ? $out : '';
+    }
+
+    // Fallback: no timeout binary, use proc_open() with stream_select timeout
+    $descriptorspec = [
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w']
+    ];
+    $process = proc_open($command, $descriptorspec, $pipes);
+    if (!is_resource($process)) return '';
+
+    $output = '';
+    $start = time();
+    $readStreams = [$pipes[1], $pipes[2]];
+
+    while (!empty($readStreams) && (time() - $start) < $timeout) {
+        $readCopy = $readStreams;
+        $write = null;
+        $except = null;
+
+        if (stream_select($readCopy, $write, $except, 1) > 0) {
+            foreach ($readCopy as $stream) {
+                $chunk = stream_get_contents($stream);
+                if ($chunk !== false) {
+                    $output .= $chunk;
+                }
+                $key = array_search($stream, $readStreams, true);
+                unset($readStreams[$key]);
+            }
+        }
+    }
+
+    foreach ($pipes as $pipe) {
+        fclose($pipe);
+    }
+    proc_terminate($process);
+    proc_close($process);
+
+    // Return raw output (don't trim so whitespace/newlines are preserved)
+    return is_string($output) ? $output : '';
+}
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3248,9 +3396,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_time'])) {
 
 // Find local time
 
-$server_time_full = shell_exec('timedatectl');
-$server_time_lines = explode("\n", trim($server_time_full));
-$server_time = $server_time_lines[0] ?? '';
+$server_time_full = safe_shell_exec('timedatectl', 2);
+if (!$server_time_full) {
+    $server_time = 'Time unavailable';
+} else {
+    $server_time_lines = explode("\n", trim($server_time_full));
+    $server_time = $server_time_lines[0] ?? 'Time unavailable';
+}
 
 
 
@@ -3687,17 +3839,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array
     //'Stop' didn't work so good in testing.
     if ($action === 'stop') {
         $stop_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --stop 2>&1";
-        //$action_output = shell_exec($stop_cmd);
+        //$action_output = safe_shell_exec($stop_cmd, 5);  
     } elseif ($action === 'start') {
         $start_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start 2>&1";
-        $action_output = shell_exec($start_cmd);
+        $action_output = safe_shell_exec($start_cmd, 5);
     }
 }
 
 
 // Check current status
 $status_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --check 2>&1';
-$status_output = shell_exec($status_cmd);
+$status_output = safe_shell_exec($status_cmd, 3);
 $is_running = false;
 $pid = null;
 
@@ -3733,7 +3885,7 @@ echo '<div class="imh-box">';
 if ($is_running) {
     $etime = null;
     if ($pid) {
-        $etime = trim(shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null'));
+        $etime = trim(safe_shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null', 2));
     }
     $runtime_str = '';
     if (ctype_digit($etime)) {
@@ -4472,7 +4624,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="imh-snap-stat.php.sha256">
-2fc1507a2c26664a7bd0a2bdf47cb1306d3853e6b83541331e193b3f4cee84e5  imh-snap-stat.php
+96f51dae87cad3f7892ed573e2cafcb3e51b6c8a11c3974ec7ba74b26a637795  imh-snap-stat.php
 </file>
 
 <file path="install.sh">
@@ -4485,7 +4637,7 @@ set -euo pipefail
 #set -x
 
 # Script metadata
-readonly SCRIPT_VERSION="0.1.5"
+readonly SCRIPT_VERSION="0.1.6"
 readonly SCRIPT_NAME="imh-snap-stat"
 readonly BASE_URL="https://raw.githubusercontent.com/gemini2463/$SCRIPT_NAME/master"
 #readonly BASE_URL="https://repo-ded.inmotionhosting.com/imh-plugins/$SCRIPT_NAME/$SCRIPT_VERSION"
@@ -4556,7 +4708,7 @@ if [[ "${1:-}" == "--uninstall" ]]; then
             rm -f "/usr/local/cpanel/whostmgr/docroot/addon_plugins/$SCRIPT_NAME.png"
             # rm -f "/var/cpanel/apps/$SCRIPT_NAME.conf"
             if [[ -x "/usr/local/cpanel/bin/unregister_appconfig" ]]; then
-                /usr/local/cpanel/bin/unregister_appconfig "$SCRIPT_NAME.conf" || true
+                /usr/local/cpanel/bin/unregister_appconfig "$SCRIPT_NAME" || true
             fi
             ;;
         "cwp")
@@ -4859,47 +5011,50 @@ update_cwp_config() {
     local include_file="/usr/local/cwpsrv/htdocs/resources/admin/include/imh-plugins.php"
     local include_statement="include('${include_file}');"
 
-    # Validate files
     [[ -f "$target" ]] || error_exit "Target file does not exist: $target"
-    [[ -r "$target" ]] || error_exit "Cannot read target file: $target"
-    [[ -w "$target" ]] || error_exit "Cannot write to target file: $target"
+    [[ -r "$target" && -w "$target" ]] || error_exit "Cannot read/write target file: $target"
     [[ -f "$include_file" ]] || error_exit "Include file does not exist: $include_file"
 
-    # Optional backup
-    # local backup="${target}.bak.$(date +%Y%m%d_%H%M%S)"
-    # copy_if_changed "$target" "$backup" || error_exit "Failed to create backup"
-    # print_message "$GREEN" "Backup created: $backup"
-
-    # Check if include already exists
+    # Skip if already exists
     if grep -Fq "include('${include_file}')" "$target" ||
-        grep -Fq "include(\"${include_file}\")" "$target" ||
-        grep -Fq "require('${include_file}')" "$target" ||
-        grep -Fq "require_once('${include_file}')" "$target"; then
+       grep -Fq "include(\"${include_file}\")" "$target" ||
+       grep -Fq "require('${include_file}')" "$target" ||
+       grep -Fq "require_once('${include_file}')" "$target"; then
         print_message "$YELLOW" "Include line already exists. No changes made."
         return 0
     fi
 
-    # Create temporary file
-    local temp_file=$(mktemp "${target}.XXXXXX") || error_exit "Failed to create temp file"
+    local temp_file
+    temp_file=$(mktemp "${target}.XXXXXX") || error_exit "Failed to create temp file"
 
-    # Add include statement
-    if grep -q '?>' "$target"; then
-        # File has closing PHP tag - insert before it
-        awk -v inc="$include_statement" '
-            /\?>/ && !done {
-                print inc
-                done = 1
-            }
-            { print }
-        ' "$target" >"$temp_file"
+    if grep -q "<?php" "$target"; then
+        # PHP open tag found
+        if grep -Eq "<\?php.*\?>" "$target"; then
+            # One-liner with both <?php and ?> on same line
+            sed -E "s#(<\?php)(.*)(\?>)#\1\n${include_statement}\n\2\n\3#" "$target" > "$temp_file"
+        elif grep -q "?>" "$target"; then
+            # Multi-line with closing tag
+            awk -v inc="$include_statement" '
+                /<\?php/ { print; next }
+                /\?>/ && !done { print inc; done=1 }
+                { print }
+            ' "$target" > "$temp_file"
+        else
+            # No closing tag — just append inside PHP
+            awk -v inc="$include_statement" '
+                /<\?php/ { print; print inc; next }
+                { print }
+            ' "$target" > "$temp_file"
+        fi
     else
-        # No closing PHP tag - append to end
-        copy_if_changed "$target" "$temp_file"
-        echo "" >>"$temp_file"
-        echo "$include_statement" >>"$temp_file"
+        # No PHP tags — wrap file in PHP tags
+        {
+            echo "<?php"
+            echo "$include_statement"
+            cat "$target"
+        } > "$temp_file"
     fi
 
-    # Validate PHP syntax if possible
     if command_exists php; then
         if ! php -l "$temp_file" >/dev/null 2>&1; then
             rm -f "$temp_file"
@@ -4907,9 +5062,8 @@ update_cwp_config() {
         fi
     fi
 
-    # Replace original file
     mv "$temp_file" "$target" || error_exit "Failed to update target file"
-    print_message "$GREEN" "Successfully added include statement to $target"
+    print_message "$GREEN" "Successfully added include statement inside PHP block in $target"
 }
 
 # Function to ensure sar/sysstat is installed and running

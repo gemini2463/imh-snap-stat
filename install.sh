@@ -7,7 +7,7 @@ set -euo pipefail
 #set -x
 
 # Script metadata
-readonly SCRIPT_VERSION="0.1.5"
+readonly SCRIPT_VERSION="0.1.6"
 readonly SCRIPT_NAME="imh-snap-stat"
 readonly BASE_URL="https://raw.githubusercontent.com/gemini2463/$SCRIPT_NAME/master"
 #readonly BASE_URL="https://repo-ded.inmotionhosting.com/imh-plugins/$SCRIPT_NAME/$SCRIPT_VERSION"
@@ -381,47 +381,50 @@ update_cwp_config() {
     local include_file="/usr/local/cwpsrv/htdocs/resources/admin/include/imh-plugins.php"
     local include_statement="include('${include_file}');"
 
-    # Validate files
     [[ -f "$target" ]] || error_exit "Target file does not exist: $target"
-    [[ -r "$target" ]] || error_exit "Cannot read target file: $target"
-    [[ -w "$target" ]] || error_exit "Cannot write to target file: $target"
+    [[ -r "$target" && -w "$target" ]] || error_exit "Cannot read/write target file: $target"
     [[ -f "$include_file" ]] || error_exit "Include file does not exist: $include_file"
 
-    # Optional backup
-    # local backup="${target}.bak.$(date +%Y%m%d_%H%M%S)"
-    # copy_if_changed "$target" "$backup" || error_exit "Failed to create backup"
-    # print_message "$GREEN" "Backup created: $backup"
-
-    # Check if include already exists
+    # Skip if already exists
     if grep -Fq "include('${include_file}')" "$target" ||
-        grep -Fq "include(\"${include_file}\")" "$target" ||
-        grep -Fq "require('${include_file}')" "$target" ||
-        grep -Fq "require_once('${include_file}')" "$target"; then
+       grep -Fq "include(\"${include_file}\")" "$target" ||
+       grep -Fq "require('${include_file}')" "$target" ||
+       grep -Fq "require_once('${include_file}')" "$target"; then
         print_message "$YELLOW" "Include line already exists. No changes made."
         return 0
     fi
 
-    # Create temporary file
-    local temp_file=$(mktemp "${target}.XXXXXX") || error_exit "Failed to create temp file"
+    local temp_file
+    temp_file=$(mktemp "${target}.XXXXXX") || error_exit "Failed to create temp file"
 
-    # Add include statement
-    if grep -q '?>' "$target"; then
-        # File has closing PHP tag - insert before it
-        awk -v inc="$include_statement" '
-            /\?>/ && !done {
-                print inc
-                done = 1
-            }
-            { print }
-        ' "$target" >"$temp_file"
+    if grep -q "<?php" "$target"; then
+        # PHP open tag found
+        if grep -Eq "<\?php.*\?>" "$target"; then
+            # One-liner with both <?php and ?> on same line
+            sed -E "s#(<\?php)(.*)(\?>)#\1\n${include_statement}\n\2\n\3#" "$target" > "$temp_file"
+        elif grep -q "?>" "$target"; then
+            # Multi-line with closing tag
+            awk -v inc="$include_statement" '
+                /<\?php/ { print; next }
+                /\?>/ && !done { print inc; done=1 }
+                { print }
+            ' "$target" > "$temp_file"
+        else
+            # No closing tag — just append inside PHP
+            awk -v inc="$include_statement" '
+                /<\?php/ { print; print inc; next }
+                { print }
+            ' "$target" > "$temp_file"
+        fi
     else
-        # No closing PHP tag - append to end
-        copy_if_changed "$target" "$temp_file"
-        echo "" >>"$temp_file"
-        echo "$include_statement" >>"$temp_file"
+        # No PHP tags — wrap file in PHP tags
+        {
+            echo "<?php"
+            echo "$include_statement"
+            cat "$target"
+        } > "$temp_file"
     fi
 
-    # Validate PHP syntax if possible
     if command_exists php; then
         if ! php -l "$temp_file" >/dev/null 2>&1; then
             rm -f "$temp_file"
@@ -429,9 +432,8 @@ update_cwp_config() {
         fi
     fi
 
-    # Replace original file
     mv "$temp_file" "$target" || error_exit "Failed to update target file"
-    print_message "$GREEN" "Successfully added include statement to $target"
+    print_message "$GREEN" "Successfully added include statement inside PHP block in $target"
 }
 
 # Function to ensure sar/sysstat is installed and running
