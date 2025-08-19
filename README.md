@@ -1,4 +1,4 @@
-# SnapStat (imh-snap-stat), v0.1.6
+# SnapStat (imh-snap-stat), v0.1.7
 
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 

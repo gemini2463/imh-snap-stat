@@ -11,7 +11,7 @@
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.6
+ * Version: 0.1.7
  */
 
 

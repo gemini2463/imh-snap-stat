@@ -7,7 +7,7 @@ set -euo pipefail
 #set -x
 
 # Script metadata
-readonly SCRIPT_VERSION="0.1.6"
+readonly SCRIPT_VERSION="0.1.7"
 readonly SCRIPT_NAME="imh-snap-stat"
 readonly BASE_URL="https://raw.githubusercontent.com/gemini2463/$SCRIPT_NAME/master"
 #readonly BASE_URL="https://repo-ded.inmotionhosting.com/imh-plugins/$SCRIPT_NAME/$SCRIPT_VERSION"
@@ -381,15 +381,13 @@ update_cwp_config() {
     local include_file="/usr/local/cwpsrv/htdocs/resources/admin/include/imh-plugins.php"
     local include_statement="include('${include_file}');"
 
+    # ---- Safety Checks ----
     [[ -f "$target" ]] || error_exit "Target file does not exist: $target"
-    [[ -r "$target" && -w "$target" ]] || error_exit "Cannot read/write target file: $target"
+    [[ -r "$target" && -w "$target" ]] || error_exit "Cannot read/write: $target"
     [[ -f "$include_file" ]] || error_exit "Include file does not exist: $include_file"
 
-    # Skip if already exists
-    if grep -Fq "include('${include_file}')" "$target" ||
-       grep -Fq "include(\"${include_file}\")" "$target" ||
-       grep -Fq "require('${include_file}')" "$target" ||
-       grep -Fq "require_once('${include_file}')" "$target"; then
+    # ---- Skip if already present ----
+    if grep -Eq "include\s*\(['\"]${include_file}['\"]\)|require(_once)?\s*\(['\"]${include_file}['\"]\)" "$target"; then
         print_message "$YELLOW" "Include line already exists. No changes made."
         return 0
     fi
@@ -397,27 +395,29 @@ update_cwp_config() {
     local temp_file
     temp_file=$(mktemp "${target}.XXXXXX") || error_exit "Failed to create temp file"
 
-    if grep -q "<?php" "$target"; then
-        # PHP open tag found
+    # ---- Modify File ----
+    if grep -q "<\?php" "$target"; then
         if grep -Eq "<\?php.*\?>" "$target"; then
-            # One-liner with both <?php and ?> on same line
+            # Case 1: One-liner <?php ... ?>
+            # Insert after <?php and before existing content
             sed -E "s#(<\?php)(.*)(\?>)#\1\n${include_statement}\n\2\n\3#" "$target" > "$temp_file"
         elif grep -q "?>" "$target"; then
-            # Multi-line with closing tag
+            # Case 2: Multi-line with closing tag
             awk -v inc="$include_statement" '
+                BEGIN {done=0}
                 /<\?php/ { print; next }
                 /\?>/ && !done { print inc; done=1 }
                 { print }
             ' "$target" > "$temp_file"
         else
-            # No closing tag — just append inside PHP
+            # Case 3: No closing tag
             awk -v inc="$include_statement" '
                 /<\?php/ { print; print inc; next }
                 { print }
             ' "$target" > "$temp_file"
         fi
     else
-        # No PHP tags — wrap file in PHP tags
+        # Case 4: No PHP tags at all
         {
             echo "<?php"
             echo "$include_statement"
@@ -425,14 +425,16 @@ update_cwp_config() {
         } > "$temp_file"
     fi
 
-    if command_exists php; then
+    # ---- Validate PHP Syntax ----
+    if command -v php >/dev/null 2>&1; then
         if ! php -l "$temp_file" >/dev/null 2>&1; then
             rm -f "$temp_file"
             error_exit "Modified file has PHP syntax errors. Aborting."
         fi
     fi
 
-    mv "$temp_file" "$target" || error_exit "Failed to update target file"
+    # ---- Replace Original ----
+    mv "$temp_file" "$target" || error_exit "Failed to update $target"
     print_message "$GREEN" "Successfully added include statement inside PHP block in $target"
 }
 
