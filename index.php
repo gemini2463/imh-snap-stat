@@ -11,7 +11,7 @@
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.7
+ * Version: 0.1.8
  */
 
 
@@ -1127,9 +1127,14 @@ class SarDataProcessor
     private const B_COLUMNS_TO_MERGE = ['pgpgin/s', 'pgpgout/s', 'fault/s', 'majflt/s'];
     private $sarLogPath;
     private $currentTime;
-    private $today;
-    private $yesterday;
+    private $todayShort;
+    private $yesterdayShort;
+    private $todayLong;
+    private $yesterdayLong;
     private $sarInterval;
+    private $dateFormat;
+    private $yesterday;
+    private $today;
 
     public function __construct()
     {
@@ -1167,8 +1172,14 @@ class SarDataProcessor
     {
         $now = time();
         $this->currentTime = date('H:i:s', $now);
-        $this->today = date('d', $now);
-        $this->yesterday = date('d', strtotime('yesterday', $now));
+
+        // Short (legacy) format: "03"
+        $this->todayShort = date('d', $now);
+        $this->yesterdayShort = date('d', strtotime('yesterday', $now));
+
+        // Long (new) format: "20250903"
+        $this->todayLong = date('Ymd', $now);
+        $this->yesterdayLong = date('Ymd', strtotime('yesterday', $now));
     }
     private function getSarQData(): array
     {
@@ -1188,16 +1199,33 @@ class SarDataProcessor
     }
     private function determineSarLogPath(): void
     {
+        $candidates = [
+            $this->yesterdayShort,
+            $this->todayShort,
+            $this->yesterdayLong,
+            $this->todayLong
+        ];
+
         foreach (self::SAR_LOG_PATHS as $path) {
-            // Check if yesterday's log file exists at this path
-            if (file_exists($path . $this->yesterday) || file_exists($path . $this->today)) {
-                $this->sarLogPath = $path;
-                return;
+            foreach ($candidates as $date) {
+                if (file_exists($path . $date)) {
+                    $this->sarLogPath = $path;
+                    $this->dateFormat = (strlen($date) === 2) ? 'short' : 'long';
+                    return;
+                }
             }
         }
 
-        // Default to standard location if no files found
+        // fallback
         $this->sarLogPath = self::SAR_LOG_PATHS[0];
+        $this->dateFormat = 'short';
+    }
+    private function resolveDate(string $day): string
+    {
+        if ($this->dateFormat === 'long') {
+            return ($day === 'yesterday') ? $this->yesterdayLong : $this->todayLong;
+        }
+        return ($day === 'yesterday') ? $this->yesterdayShort : $this->todayShort;
     }
     private function executeSarCommands(string $option): array
     {
@@ -1211,8 +1239,8 @@ class SarDataProcessor
         $ten_min = floor(date('i', $now) / 10) * 10;
         $tag2 = 'sar' . preg_replace('/[^a-zA-Z0-9]/', '', $option) . '_today_' . $this->today . "_h{$hour}_m{$ten_min}";
 
-        $cmd1 = "LANG=C sar {$option} -f " . $this->sarLogPath . "{$this->yesterday} -s {$this->currentTime}";
-        $cmd2 = "LANG=C sar {$option} -f " . $this->sarLogPath . "{$this->today} -e {$this->currentTime}";
+        $cmd1 = "LC_ALL=C sar {$option} -f " . $this->sarLogPath . $this->resolveDate('yesterday') . " -s {$this->currentTime}";
+        $cmd2 = "LC_ALL=C sar {$option} -f " . $this->sarLogPath . $this->resolveDate('today') . " -e {$this->currentTime}";
         return [
             imh_cached_shell_exec($tag1, $cmd1, $this->sarInterval),
             imh_cached_shell_exec($tag2, $cmd2, $this->sarInterval)

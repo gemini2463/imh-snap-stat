@@ -1,4 +1,4 @@
-# SnapStat (imh-snap-stat), v0.1.7
+# SnapStat (imh-snap-stat), v0.1.8
 
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
@@ -8,7 +8,6 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 # Installation
 
 - Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | sh`
-- Maybe soon?: `curl -fsSL https://repo-ded.inmotionhosting.com/imh-plugins/imh-snap-stat/0.1.4/install.sh | sh`
 
 # Files
 
