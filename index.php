@@ -108,9 +108,9 @@ function imh_safe_cache_filename($tag)
     return IMH_SAR_CACHE_DIR . '/sar_' . preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $tag) . '.cache';
 }
 
-/**
- * Returns the sar sample interval in seconds (default 600).
- */
+
+// Returns the sar sample interval in seconds (default 600).
+
 function imh_guess_sar_interval()
 {
     $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
@@ -132,23 +132,28 @@ function imh_cached_shell_exec($tag, $command, $sar_interval)
 {
     $cache_file = imh_safe_cache_filename($tag);
 
-
-
     if (file_exists($cache_file)) {
         if (fileowner($cache_file) !== 0) { // 0 = root
-            unlink($cache_file);
-            // treat as cache miss
+            unlink($cache_file); // treat as cache miss
         } else {
             $mtime = filemtime($cache_file);
             if (time() - $mtime < $sar_interval) {
-                return file_get_contents($cache_file);
+                $cached = file_get_contents($cache_file);
+                if ($cached !== false && strlen(trim($cached)) > 0) {
+                    return $cached; // return good cached output
+                }
             }
         }
     }
+
     $out = shell_exec($command);
-    if (strlen(trim($out))) {
-        file_put_contents($cache_file, $out);
+
+    // Gracefully handle null/empty
+    if (!is_string($out) || trim($out) === '') {
+        return false; // explicit failure
     }
+
+    file_put_contents($cache_file, $out);
     return $out;
 }
 
@@ -220,11 +225,6 @@ function safe_shell_exec(string $command, int $timeout = 3): string
 
 
 
-
-
-
-
-
 // Defaults and validation
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_time'])) {
@@ -243,6 +243,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_time'])) {
 
 
 
+
+// Force PHP to use system local timezone so it matches sys-snap logging
+
+$server_tz = trim(shell_exec('date +%Z')); // e.g. "EDT"
+$tz_name = @timezone_name_from_abbr($server_tz);
+if ($tz_name !== false) {
+    date_default_timezone_set($tz_name);
+} else {
+    // fallback: use system-configured timezone
+    date_default_timezone_set(@date_default_timezone_get());
+}
 
 
 
@@ -773,7 +784,7 @@ echo '</div>';
 // System output, if the button was used to start sys-snap
 
 if ($action_output) {
-    echo "<pre class='imh-pre'>"
+    echo "<pre class='imh-pre'><b>System Output:</b><br/><br/>"
         . htmlspecialchars($action_output) . "</pre>";
 }
 
@@ -835,7 +846,23 @@ echo '</form>';
 
 //Sys-snap output
 
-echo '<h2 class="imh-spacer">Scores from ' . sprintf('%02d:%02d', $start_hour, $start_min) . ' to ' . sprintf('%02d:%02d', $end_hour, $end_min) . '</h2>';
+// Determine display time range dynamically
+$display_start = sprintf('%02d:%02d', $start_hour, $start_min);
+$display_end   = sprintf('%02d:%02d', $end_hour, $end_min);
+
+if ($is_running && ctype_digit($etime)) {
+    $elapsed = (int)$etime;
+    if ($elapsed < 86400) { // less than 24h
+        $now = time();
+        $start_ts = $now - $elapsed;
+        $display_start = date('H:i', $start_ts);
+        $display_end   = date('H:i', $now);
+    } else {
+        // running more than 24h, default full day
+        $display_start = '00:00';
+        $display_end   = '23:59';
+    }
+}
 
 $start_time_arg = sprintf('%02d:%02d', $start_hour, $start_min);
 $end_time_arg = sprintf('%02d:%02d', $end_hour, $end_min);
@@ -850,20 +877,37 @@ $output = imh_cached_shell_exec($cache_tag, $sys_snap_cmd, $cache_ttl);
 
 
 
+// Handle null/empty output gracefully
+
 if (!$output || $output === null) {
-    echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check if the script is running and accessible.</div>";
+    echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check time range and try again.</div>";
+    echo '</div>'; // Close tab-sys-snap
+
+    echo '<div id="tab-loadavg" class="tab-content">';
+    echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check time range and try again.</div>";
+
+    echo '<form method="post" class="imh-box">
+    <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
+    <input type="hidden" name="form" value="time_range">
+    <input type="submit" name="reset_time" value="Reset Time Range" class="imh-btn imh-red-btn">
+    </form>';
+
+    echo '</div>'; // Close tab-loadavg
 
     if ($isCPanelServer) {
         WHM::footer();
     } else {
         echo '</div>'; // Close panel-body
     }
-    exit;
+    return;
 }
 
 
 
 
+$tz_label = date('T'); // e.g. "EDT", "PDT", "GMT"
+echo '<h2 class="imh-spacer">Scores from ' . htmlspecialchars($display_start) .
+    ' to ' . htmlspecialchars($display_end) . ' ' . htmlspecialchars($tz_label) . '</h2>';
 
 
 
