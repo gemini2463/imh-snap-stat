@@ -103,9 +103,15 @@ foreach (glob("$cache_dir/*.cache") as $file) {
     }
 }
 
-function imh_safe_cache_filename($tag)
+function imh_safe_cache_filename(string $tag): string
 {
-    return IMH_SAR_CACHE_DIR . '/sar_' . preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $tag) . '.cache';
+    // 1. Sanitize the tag by allowing only a safe subset of characters.
+    $safe_tag = preg_replace('/[^a-zA-Z0-9_\-]/', '_', $tag);
+    // 2. Truncate the sanitized tag to a reasonable length to prevent filesystem errors.
+    $truncated_tag = substr($safe_tag, 0, 55); // Truncate to 55 to leave room for the hash
+    // 3. Append a short, fast hash of the ORIGINAL tag to guarantee uniqueness and avoid collisions.
+    $hash = hash('crc32b', $tag); // crc32b is very fast and sufficient for this purpose.
+    return IMH_SAR_CACHE_DIR . '/sar_' . $truncated_tag . '_' . $hash . '.cache';
 }
 
 
@@ -131,30 +137,53 @@ function imh_guess_sar_interval()
 function imh_cached_shell_exec($tag, $command, $sar_interval)
 {
     $cache_file = imh_safe_cache_filename($tag);
-
-    if (file_exists($cache_file)) {
-        if (fileowner($cache_file) !== 0) { // 0 = root
-            unlink($cache_file); // treat as cache miss
-        } else {
-            $mtime = filemtime($cache_file);
-            if (time() - $mtime < $sar_interval) {
-                $cached = file_get_contents($cache_file);
-                if ($cached !== false && strlen(trim($cached)) > 0) {
-                    return $cached; // return good cached output
+    $lock_file = $cache_file . '.lock';
+    $fp = fopen($lock_file, 'c');
+    // It's good practice to check if fopen succeeded
+    if ($fp === false) {
+        // Could not create lock file, maybe log an error.
+        // For now, fail gracefully.
+        return false;
+    }
+    // Attempt to get an exclusive, non-blocking lock.
+    if (!flock($fp, LOCK_EX | LOCK_NB)) {
+        // Another process is already generating the cache.
+        // We can either wait, or just fail and let the next request try.
+        // Failing is often safer in a web context to avoid long waits.
+        fclose($fp);
+        return false; // Or you could try reading the cache file in a loop for a few seconds
+    }
+    try {
+        if (file_exists($cache_file)) {
+            if (fileowner($cache_file) !== 0) { // 0 = root
+                unlink($cache_file); // treat as cache miss
+            } else {
+                $mtime = filemtime($cache_file);
+                if (time() - $mtime < $sar_interval) {
+                    $cached = file_get_contents($cache_file);
+                    if ($cached !== false && strlen(trim($cached)) > 0) {
+                        // This return is now SAFE. The 'finally' block will still execute.
+                        return $cached;
+                    }
                 }
             }
         }
+        $out = shell_exec($command);
+        // Gracefully handle null/empty
+        if (!is_string($out) || trim($out) === '') {
+            // This return is also SAFE. 'finally' will execute.
+            return false;
+        }
+        file_put_contents($cache_file, $out);
+        chmod($cache_file, 0600);
+        // This is the successful return. 'finally' will execute.
+        return $out;
+    } finally {
+        // --- THIS CLEANUP CODE IS GUARANTEED TO RUN ---
+        flock($fp, LOCK_UN); // Release the lock
+        fclose($fp);         // Close the file handle
+        @unlink($lock_file); // Delete the lock file
     }
-
-    $out = shell_exec($command);
-
-    // Gracefully handle null/empty
-    if (!is_string($out) || trim($out) === '') {
-        return false; // explicit failure
-    }
-
-    file_put_contents($cache_file, $out);
-    return $out;
 }
 
 
@@ -218,9 +247,33 @@ function safe_shell_exec(string $command, int $timeout = 3): string
 }
 
 
+function find_executable(string $command, array $fallback_paths = [])
+{
+    // 1. Check the system's PATH first (most flexible method).
+    // 'command -v' is a reliable, POSIX-standard way to find an executable's path.
+    $path_from_shell = trim(safe_shell_exec('command -v ' . escapeshellarg($command), 2));
+    if (!empty($path_from_shell) && is_executable($path_from_shell)) {
+        return $path_from_shell;
+    }
+    // 2. If not in PATH, check the list of common fallback locations.
+    foreach ($fallback_paths as $path) {
+        if (is_executable($path)) {
+            return $path;
+        }
+    }
+    // 3. If not found anywhere, return false.
+    return false;
+}
 
-
-
+// Define the list of common locations for sys-snap.pl
+const SYS_SNAP_FALLBACK_PATHS = [
+    '/opt/imh-sys-snap/bin/sys-snap.pl',
+    '/root/sys-snap.pl',
+    '/usr/local/bin/sys-snap.pl',
+    '/usr/bin/sys-snap.pl'
+];
+// Find the executable and store its path in a constant.
+define('SYS_SNAP_EXECUTABLE', find_executable('sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 
@@ -490,6 +543,16 @@ if ($isCPanelServer) {
         background: #f4f4f4;
     }
 
+    .high-load-cell {
+        background-color: #ffe5e5 !important;
+        /* A light, noticeable red */
+        color: #9c1010 !important;
+        /* Darker red text for contrast */
+        font-weight: bold;
+        outline: 1px solid #ffb8b8;
+        /* A subtle border to contain the highlight */
+    }
+
     .imh-alert {
         color: #c00;
         margin: 1em;
@@ -697,23 +760,18 @@ echo '<div class="tabs-nav" id="imh-tabs-nav">
 // 5. sys-snap Tab
 // ==========================
 
-$allowed_actions = ['start']; // And perhaps 'stop'
 $action_output = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && in_array($_POST['action'], $allowed_actions, true)) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $action = $_POST['action'];
-    //'Stop' didn't work so good in testing.
-    if ($action === 'stop') {
-        $stop_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --stop 2>&1";
-        //$action_output = safe_shell_exec($stop_cmd, 5);  
-    } elseif ($action === 'start') {
-        $start_cmd = "echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start 2>&1";
+    if ($action === 'start') {
+        $start_cmd = "echo y | " . escapeshellarg(SYS_SNAP_EXECUTABLE) . " --start 2>&1";
         $action_output = safe_shell_exec($start_cmd, 5);
     }
 }
 
 
 // Check current status
-$status_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --check 2>&1';
+$status_cmd = escapeshellarg(SYS_SNAP_EXECUTABLE) . ' --check 2>&1';
 $status_output = safe_shell_exec($status_cmd, 3);
 $is_running = false;
 $pid = null;
@@ -725,51 +783,70 @@ if (preg_match("/Sys-snap is running, PID:\s*'(\d+)'/", $status_output, $m)) {
 
 echo '<div id="tab-sys-snap" class="tab-content active">';
 
-// Info box
 
-function formatElapsedTime($seconds)
-{
-    $seconds = (int)$seconds;
-    $days = floor($seconds / 86400);
-    $hours = floor(($seconds % 86400) / 3600);
-    $mins = floor(($seconds % 3600) / 60);
-
-    $out = [];
-    if ($days > 0) $out[] = "{$days}d";
-    if ($hours > 0 || $days > 0) $out[] = "{$hours}h";
-    $out[] = "{$mins}m";
-
-    return implode(', ', $out);
-}
-
-echo "<div class='imh-box imh-box.margin-bottom'><p class='imh-larger-text'><a target='_blank' href='https://github.com/CpanelInc/tech-SysSnapv2'>sys-snap</a> logs CPU and memory usage on a rolling 24-hour cycle, every minute.</p>";
-
-// Status box
-
-echo '<div class="imh-box">';
-if ($is_running) {
-    $etime = null;
-    if ($pid) {
-        $etime = trim(safe_shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null', 2));
-    }
-    $runtime_str = '';
-    if (ctype_digit($etime)) {
-        $runtime_str = formatElapsedTime($etime);
-    }
-    echo '<span class="imh-status imh-status-running">';
-    echo 'Running';
-    if ($runtime_str) {
-        echo ' for ' . htmlspecialchars($runtime_str);
-    }
-    echo '</span>';
-    echo "<span class='imh-pid'>PID: " . intval($pid) . '</span>';
+// Check if the executable was found
+if (SYS_SNAP_EXECUTABLE === false) {
+    echo "<div class='imh-box imh-alert'>
+              <strong>Error:</strong> The <code>sys-snap.pl</code> executable could not be found.
+              <br/><br/>
+              Please ensure that sys-snap is installed and that the <code>sys-snap.pl</code> script is located in the system's PATH or in one of the common directories:
+              <ul>
+                  <li>/opt/imh-sys-snap/bin/</li>
+                  <li>/root/</li>
+                  <li>/usr/local/bin/</li>
+                  <li>/usr/bin/</li>
+              </ul>
+          </div>";
 } else {
-    echo '<span class="imh-status imh-status-notrunning">';
-    echo 'Not Running';
-    echo '</span>';
 
-    // Start button.
-    echo '
+
+
+
+    // Info box
+
+    function formatElapsedTime($seconds)
+    {
+        $seconds = (int)$seconds;
+        $days = floor($seconds / 86400);
+        $hours = floor(($seconds % 86400) / 3600);
+        $mins = floor(($seconds % 3600) / 60);
+
+        $out = [];
+        if ($days > 0) $out[] = "{$days}d";
+        if ($hours > 0 || $days > 0) $out[] = "{$hours}h";
+        $out[] = "{$mins}m";
+
+        return implode(', ', $out);
+    }
+
+    echo "<div class='imh-box imh-box.margin-bottom'><p class='imh-larger-text'><a target='_blank' href='https://github.com/CpanelInc/tech-SysSnapv2'>sys-snap</a> logs CPU and memory usage on a rolling 24-hour cycle, every minute.</p>";
+
+    // Status box
+
+    echo '<div class="imh-box">';
+    if ($is_running) {
+        $etime = null;
+        if ($pid) {
+            $etime = trim(safe_shell_exec('ps -p ' . intval($pid) . ' -o etimes= 2>/dev/null', 2));
+        }
+        $runtime_str = '';
+        if (ctype_digit($etime)) {
+            $runtime_str = formatElapsedTime($etime);
+        }
+        echo '<span class="imh-status imh-status-running">';
+        echo 'Running';
+        if ($runtime_str) {
+            echo ' for ' . htmlspecialchars($runtime_str);
+        }
+        echo '</span>';
+        echo "<span class='imh-pid'>PID: " . intval($pid) . '</span>';
+    } else {
+        echo '<span class="imh-status imh-status-notrunning">';
+        echo 'Not Running';
+        echo '</span>';
+
+        // Start button.
+        echo '
 <form method="post">
   <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
   <input type="hidden" name="form"       value="sys_snap_control">
@@ -777,23 +854,23 @@ if ($is_running) {
   <button type="submit">Start sys-snap</button>
 </form>
     ';
-}
-echo '</div>';
+    }
+    echo '</div>';
 
 
-// System output, if the button was used to start sys-snap
+    // System output, if the button was used to start sys-snap
 
-if ($action_output) {
-    echo "<pre class='imh-pre'><b>System Output:</b><br/><br/>"
-        . htmlspecialchars($action_output) . "</pre>";
-}
+    if ($action_output) {
+        echo "<pre class='imh-pre'><b>System Output:</b><br/><br/>"
+            . htmlspecialchars($action_output) . "</pre>";
+    }
 
-echo "<p>Review the <code>24 Hour Statistics</code> to identify time ranges of interest.</p><br/>";
+    echo "<p>Review the <code>24 Hour Statistics</code> to identify time ranges of interest.</p><br/>";
 
-echo "<p><strong>CPU Score</strong>: 1 = 1% of a CPU<br/>
+    echo "<p><strong>CPU Score</strong>: 1 = 1% of a CPU<br/>
 <strong>Memory Score</strong>: 1 = 1% of total memory</p>";
 
-echo "</div>";
+    echo "</div>";
 
 
 
@@ -801,171 +878,171 @@ echo "</div>";
 
 
 
-// Set Time Range form
+    // Set Time Range form
 
-echo '<form method="post" class="imh-box">
+    echo '<form method="post" class="imh-box">
 <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
 <input type="hidden" name="form" value="time_range">
 ';
-echo "<p class='imh-server-time'>" . htmlspecialchars($server_time) . "</p>";
+    echo "<p class='imh-server-time'>" . htmlspecialchars($server_time) . "</p>";
 
-echo 'Start: <select name="start_hour">';
-for ($i = 0; $i < 24; $i++) echo "<option value='$i'" . ($i == $start_hour ? ' selected' : '') . ">$i</option>";
-echo '</select> : <select name="start_min">';
-for ($i = 0; $i < 60; $i++) {
-    echo "<option value='$i'" . ($i == $start_min ? ' selected' : '') . ">" .
-        sprintf("%02d", $i) .
-        "</option>";
-}
-echo '</select>';
-
-echo ' &nbsp; End: <select name="end_hour">';
-for ($i = 0; $i < 24; $i++) echo "<option value='$i'" . ($i == $end_hour ? ' selected' : '') . ">$i</option>";
-echo '</select> : <select name="end_min">';
-for ($i = 0; $i < 60; $i++) {
-    echo "<option value='$i'" . ($i == $end_min ? ' selected' : '') . ">" .
-        sprintf("%02d", $i) .
-        "</option>";
-}
-echo '</select>';
-
-echo ' <input type="submit" name="set_time" value="Set New Time Range" class="imh-btn">';
-if ($start_hour != 0 || $start_min != 0 || $end_hour != 23 || $end_min != 59) {
-    echo ' <input type="submit" name="reset_time" value="Reset Time Range" class="imh-btn imh-red-btn">';
-}
-echo '</form>';
-
-
-
-
-
-
-
-
-
-
-//Sys-snap output
-
-// Determine display time range dynamically
-$display_start = sprintf('%02d:%02d', $start_hour, $start_min);
-$display_end   = sprintf('%02d:%02d', $end_hour, $end_min);
-
-if ($is_running && ctype_digit($etime)) {
-    $elapsed = (int)$etime;
-    if ($elapsed < 86400) { // less than 24h
-        $now = time();
-        $start_ts = $now - $elapsed;
-        $display_start = date('H:i', $start_ts);
-        $display_end   = date('H:i', $now);
-    } else {
-        // running more than 24h, default full day
-        $display_start = '00:00';
-        $display_end   = '23:59';
+    echo 'Start: <select name="start_hour">';
+    for ($i = 0; $i < 24; $i++) echo "<option value='$i'" . ($i == $start_hour ? ' selected' : '') . ">$i</option>";
+    echo '</select> : <select name="start_min">';
+    for ($i = 0; $i < 60; $i++) {
+        echo "<option value='$i'" . ($i == $start_min ? ' selected' : '') . ">" .
+            sprintf("%02d", $i) .
+            "</option>";
     }
-}
+    echo '</select>';
 
-$start_time_arg = sprintf('%02d:%02d', $start_hour, $start_min);
-$end_time_arg = sprintf('%02d:%02d', $end_hour, $end_min);
+    echo ' &nbsp; End: <select name="end_hour">';
+    for ($i = 0; $i < 24; $i++) echo "<option value='$i'" . ($i == $end_hour ? ' selected' : '') . ">$i</option>";
+    echo '</select> : <select name="end_min">';
+    for ($i = 0; $i < 60; $i++) {
+        echo "<option value='$i'" . ($i == $end_min ? ' selected' : '') . ">" .
+            sprintf("%02d", $i) .
+            "</option>";
+    }
+    echo '</select>';
 
-$sys_snap_cmd = '/usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --print ' .
-    escapeshellarg($start_time_arg) . ' ' .
-    escapeshellarg($end_time_arg) . ' -v 2>&1';
-
-$cache_ttl = 60; // seconds
-$cache_tag = "sys_snap_{$start_hour}_{$start_min}_{$end_hour}_{$end_min}";
-$output = imh_cached_shell_exec($cache_tag, $sys_snap_cmd, $cache_ttl);
+    echo ' <input type="submit" name="set_time" value="Set New Time Range" class="imh-btn">';
+    if ($start_hour != 0 || $start_min != 0 || $end_hour != 23 || $end_min != 59) {
+        echo ' <input type="submit" name="reset_time" value="Reset Time Range" class="imh-btn imh-red-btn">';
+    }
+    echo '</form>';
 
 
 
-// Handle null/empty output gracefully
 
-if (!$output || $output === null) {
-    echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check time range and try again.</div>";
-    echo '</div>'; // Close tab-sys-snap
 
-    echo '<div id="tab-loadavg" class="tab-content">';
-    echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check time range and try again.</div>";
 
-    echo '<form method="post" class="imh-box">
+
+
+
+
+    //Sys-snap output
+
+    // Determine display time range dynamically
+    $display_start = sprintf('%02d:%02d', $start_hour, $start_min);
+    $display_end   = sprintf('%02d:%02d', $end_hour, $end_min);
+
+    if ($is_running && ctype_digit($etime)) {
+        $elapsed = (int)$etime;
+        if ($elapsed < 86400) { // less than 24h
+            $now = time();
+            $start_ts = $now - $elapsed;
+            $display_start = date('H:i', $start_ts);
+            $display_end   = date('H:i', $now);
+        } else {
+            // running more than 24h, default full day
+            $display_start = '00:00';
+            $display_end   = '23:59';
+        }
+    }
+
+    $start_time_arg = sprintf('%02d:%02d', $start_hour, $start_min);
+    $end_time_arg = sprintf('%02d:%02d', $end_hour, $end_min);
+
+    $sys_snap_cmd = escapeshellarg(SYS_SNAP_EXECUTABLE) . ' --print ' .
+        escapeshellarg($start_time_arg) . ' ' .
+        escapeshellarg($end_time_arg) . ' -v 2>&1';
+
+    $cache_ttl = 60; // seconds
+    $cache_tag = "sys_snap_{$start_hour}_{$start_min}_{$end_hour}_{$end_min}";
+    $output = imh_cached_shell_exec($cache_tag, $sys_snap_cmd, $cache_ttl);
+
+
+
+    // Handle null/empty output gracefully
+
+    if (!$output || $output === null) {
+        echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check time range and try again.</div>";
+        echo '</div>'; // Close tab-sys-snap
+
+        echo '<div id="tab-loadavg" class="tab-content">';
+        echo "<div class='alert alert-danger imh-spacer imh-alert'>Could not get output from sys-snap.<br/>Check time range and try again.</div>";
+
+        echo '<form method="post" class="imh-box">
     <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
     <input type="hidden" name="form" value="time_range">
     <input type="submit" name="reset_time" value="Reset Time Range" class="imh-btn imh-red-btn">
     </form>';
 
-    echo '</div>'; // Close tab-loadavg
+        echo '</div>'; // Close tab-loadavg
 
-    if ($isCPanelServer) {
-        WHM::footer();
-    } else {
-        echo '</div>'; // Close panel-body
-    }
-    return;
-}
-
-
-
-
-$tz_label = date('T'); // e.g. "EDT", "PDT", "GMT"
-echo '<h2 class="imh-spacer">Scores from ' . htmlspecialchars($display_start) .
-    ' to ' . htmlspecialchars($display_end) . ' ' . htmlspecialchars($tz_label) . '</h2>';
-
-
-
-
-// Parse output
-
-function parseSysSnap($text)
-{
-    $lines = explode("\n", $text);
-    $results = [];
-    $currentUser = null;
-    $currentSection = null;
-
-    foreach ($lines as $line) {
-        $trim = trim($line);
-
-        // User Section
-        if (preg_match('/^user:\s+(\S+)/', $line, $m)) {
-            $currentUser = $m[1];
-            $results[$currentUser] = [
-                'cpu-score' => null,
-                'cpu-list' => [],
-                'memory-score' => null,
-                'memory-list' => []
-            ];
-            $currentSection = null;
-            continue;
+        if ($isCPanelServer) {
+            WHM::footer();
+        } else {
+            echo '</div>'; // Close panel-body
         }
-
-        // CPU score
-        if (preg_match('/cpu-score:\s+([0-9\.]+)/', $line, $m) && $currentUser) {
-            $results[$currentUser]['cpu-score'] = $m[1];
-            $currentSection = 'cpu-list';
-            continue;
-        }
-
-        // memory score
-        if (preg_match('/memory-score:\s+([0-9\.]+)/', $line, $m) && $currentUser) {
-            $results[$currentUser]['memory-score'] = $m[1];
-            $currentSection = 'memory-list';
-            continue;
-        }
-
-        // CPU process
-        if (preg_match('/C:\s*([0-9\.]+)\s*proc:\s*(.*)$/', $trim, $m) && $currentUser && $currentSection == 'cpu-list') {
-            $results[$currentUser]['cpu-list'][] = ['score' => $m[1], 'proc' => $m[2]];
-            continue;
-        }
-
-        // Memory process
-        if (preg_match('/M:\s*([0-9\.]+)\s*proc:\s*(.*)$/', $trim, $m) && $currentUser && $currentSection == 'memory-list') {
-            $results[$currentUser]['memory-list'][] = ['score' => $m[1], 'proc' => $m[2]];
-            continue;
-        }
+        return;
     }
 
-    return $results;
-}
+
+
+
+    $tz_label = date('T'); // e.g. "EDT", "PDT", "GMT"
+    echo '<h2 class="imh-spacer">Scores from ' . htmlspecialchars($display_start) .
+        ' to ' . htmlspecialchars($display_end) . ' ' . htmlspecialchars($tz_label) . '</h2>';
+
+
+
+
+    // Parse output
+
+    function parseSysSnap($text)
+    {
+        $lines = explode("\n", $text);
+        $results = [];
+        $currentUser = null;
+        $currentSection = null;
+
+        foreach ($lines as $line) {
+            $trim = trim($line);
+
+            // User Section
+            if (preg_match('/^user:\s+(\S+)/', $line, $m)) {
+                $currentUser = $m[1];
+                $results[$currentUser] = [
+                    'cpu-score' => null,
+                    'cpu-list' => [],
+                    'memory-score' => null,
+                    'memory-list' => []
+                ];
+                $currentSection = null;
+                continue;
+            }
+
+            // CPU score
+            if (preg_match('/cpu-score:\s+([0-9\.]+)/', $line, $m) && $currentUser) {
+                $results[$currentUser]['cpu-score'] = $m[1];
+                $currentSection = 'cpu-list';
+                continue;
+            }
+
+            // memory score
+            if (preg_match('/memory-score:\s+([0-9\.]+)/', $line, $m) && $currentUser) {
+                $results[$currentUser]['memory-score'] = $m[1];
+                $currentSection = 'memory-list';
+                continue;
+            }
+
+            // CPU process
+            if (preg_match('/C:\s*([0-9\.]+)\s*proc:\s*(.*)$/', $trim, $m) && $currentUser && $currentSection == 'cpu-list') {
+                $results[$currentUser]['cpu-list'][] = ['score' => $m[1], 'proc' => $m[2]];
+                continue;
+            }
+
+            // Memory process
+            if (preg_match('/M:\s*([0-9\.]+)\s*proc:\s*(.*)$/', $trim, $m) && $currentUser && $currentSection == 'memory-list') {
+                $results[$currentUser]['memory-list'][] = ['score' => $m[1], 'proc' => $m[2]];
+                continue;
+            }
+        }
+
+        return $results;
+    }
 
 
 
@@ -974,45 +1051,45 @@ function parseSysSnap($text)
 
 
 
-// Display sys-snap data
+    // Display sys-snap data
 
-function cleanProcName($proc)
-{
-    // Remove all leading "tree" decorations (like "| ", "\_ ", any whitespace), possibly repeated.
-    return preg_replace('/^[\|\s\\\\\_]+/', '', $proc);
-}
+    function cleanProcName($proc)
+    {
+        // Remove all leading "tree" decorations (like "| ", "\_ ", any whitespace), possibly repeated.
+        return preg_replace('/^[\|\s\\\\\_]+/', '', $proc);
+    }
 
-$data = parseSysSnap($output);
-
-
+    $data = parseSysSnap($output);
 
 
 
 
-// Output data for the pie graph
 
-$pieDataCPU = [];
-foreach ($data as $user => $vals) {
-    $pieDataCPU[] = [
-        'user' => $user,
-        'cpuScore' => floatval($vals['cpu-score'])
-    ];
-};
 
-$pieDataMemory = [];
-// Sort $data by memory-score descending for the pie chart
-$sortedByMemory = $data;
-uasort($sortedByMemory, function ($a, $b) {
-    return floatval($b['memory-score']) <=> floatval($a['memory-score']);
-});
-foreach ($sortedByMemory as $user => $vals) {
-    $pieDataMemory[] = [
-        'user' => $user,
-        'memoryScore' => floatval($vals['memory-score'])
-    ];
-};
+    // Output data for the pie graph
 
-echo "<script>
+    $pieDataCPU = [];
+    foreach ($data as $user => $vals) {
+        $pieDataCPU[] = [
+            'user' => $user,
+            'cpuScore' => floatval($vals['cpu-score'])
+        ];
+    };
+
+    $pieDataMemory = [];
+    // Sort $data by memory-score descending for the pie chart
+    $sortedByMemory = $data;
+    uasort($sortedByMemory, function ($a, $b) {
+        return floatval($b['memory-score']) <=> floatval($a['memory-score']);
+    });
+    foreach ($sortedByMemory as $user => $vals) {
+        $pieDataMemory[] = [
+            'user' => $user,
+            'memoryScore' => floatval($vals['memory-score'])
+        ];
+    };
+
+    echo "<script>
 window.sysSnapPieDataCPU = " . json_encode($pieDataCPU) . ";
 window.sysSnapPieDataMemory = " . json_encode($pieDataMemory) . ";
 </script>";
@@ -1023,39 +1100,39 @@ window.sysSnapPieDataMemory = " . json_encode($pieDataMemory) . ";
 
 
 
-// --- User Summary Table ---
-echo '<div class="imh-box">';
-echo '<table class="sys-snap-tables">';
-echo '<thead>';
-echo '<th>User</th>';
-echo '<th>CPU Score<br/>1 = 1% of a CPU</th>';
-echo '<th>Memory Score<br/>1 = 1% of total memory</th>';
-echo '</thead>';
+    // --- User Summary Table ---
+    echo '<div class="imh-box">';
+    echo '<table class="sys-snap-tables">';
+    echo '<thead>';
+    echo '<th>User</th>';
+    echo '<th>CPU Score<br/>1 = 1% of a CPU</th>';
+    echo '<th>Memory Score<br/>1 = 1% of total memory</th>';
+    echo '</thead>';
 
-$row_idx = 0;
+    $row_idx = 0;
 
-foreach ($data as $user => $vals) {
-    // Anchor ID for the user section
-    $anchor = 'user-' . rawurlencode($user);
-    $row_class = ($row_idx % 2 === 1) ? " class='odd-num-table-row'" : "";
-    echo "<tr$row_class>";
+    foreach ($data as $user => $vals) {
+        // Anchor ID for the user section
+        $anchor = 'user-' . rawurlencode($user);
+        $row_class = ($row_idx % 2 === 1) ? " class='odd-num-table-row'" : "";
+        echo "<tr$row_class>";
 
-    $row_idx++;
+        $row_idx++;
 
-    if ($isCPanelServer) {
-        echo '<td><strong><a href="#' . $anchor . '">' . htmlspecialchars($user) . '</a></strong></td>';
-    } else {
-        echo '<td><strong>' . htmlspecialchars($user) . '</strong></td>';
+        if ($isCPanelServer) {
+            echo '<td><strong><a href="#' . $anchor . '">' . htmlspecialchars($user) . '</a></strong></td>';
+        } else {
+            echo '<td><strong>' . htmlspecialchars($user) . '</strong></td>';
+        }
+        echo '<td class="text-right">' . htmlspecialchars($vals['cpu-score']) . '</td>';
+        echo '<td class="text-right">' . htmlspecialchars($vals['memory-score']) . '</td>';
+        echo '</tr>';
     }
-    echo '<td class="text-right">' . htmlspecialchars($vals['cpu-score']) . '</td>';
-    echo '<td class="text-right">' . htmlspecialchars($vals['memory-score']) . '</td>';
-    echo '</tr>';
-}
-echo '</table>';
-echo '</div>';
+    echo '</table>';
+    echo '</div>';
 
-// Pie chart container
-echo '
+    // Pie chart container
+    echo '
 <div class="imh-box imh-table-responsive">
 <table class="sys-snap-tables imh-width-full">
     <thead>
@@ -1074,73 +1151,70 @@ echo '
 </div>
 ';
 
-// --- User Details Sections ---
-// Each user has a collapsible section with CPU and Memory details.
+    // --- User Details Sections ---
+    // Each user has a collapsible section with CPU and Memory details.
 
-echo '<div class="imh-spacer imh-monospace">';
-foreach ($data as $user => $vals) {
-    $anchor = 'user-' . rawurlencode($user);
+    echo '<div class="imh-spacer imh-monospace">';
+    foreach ($data as $user => $vals) {
+        $anchor = 'user-' . rawurlencode($user);
 
-    // Unique ID for JS target
-    $collapse_id = 'user-details-' . md5($user);
+        // Unique ID for JS target
+        $collapse_id = 'user-details-' . md5($user);
 
-    echo "<div id='$anchor' class='imh-spacer imh-monospace imh-user-section'>";
-    echo "<h2 style='display:inline-block;'>User: <span class='imh-user-name'>" . htmlspecialchars($user) . "</span></h2>";
-
-
-    // Use data attributes for the toggle target and state
-    echo " <button class='imh-toggle-btn' data-target='$collapse_id' data-collapsed='0' aria-expanded='true' style='margin-left:1em;font-size:1em;vertical-align:middle;'>[–]</button>";
+        echo "<div id='$anchor' class='imh-spacer imh-monospace imh-user-section'>";
+        echo "<h2 style='display:inline-block;'>User: <span class='imh-user-name'>" . htmlspecialchars($user) . "</span></h2>";
 
 
-    // Collapsible content container
+        // Use data attributes for the toggle target and state
+        echo " <button class='imh-toggle-btn' data-target='$collapse_id' data-collapsed='0' aria-expanded='true' style='margin-left:1em;font-size:1em;vertical-align:middle;'>[–]</button>";
 
-    echo "<div id='$collapse_id' class='imh-collapsible-content'>";
+
+        // Collapsible content container
+
+        echo "<div id='$collapse_id' class='imh-collapsible-content'>";
 
 
-    // CPU
-    echo "<h3>CPU Score: " . htmlspecialchars($vals['cpu-score']) . "</h3>";
-    echo "<table class='sys-snap-tables'>";
-    echo "<thead><th>CPU</th><th>Process</th></thead>";
+        // CPU
+        echo "<h3>CPU Score: " . htmlspecialchars($vals['cpu-score']) . "</h3>";
+        echo "<table class='sys-snap-tables'>";
+        echo "<thead><th>CPU</th><th>Process</th></thead>";
 
-    $cpu_row_idx = 0;
+        $cpu_row_idx = 0;
 
-    foreach ($vals['cpu-list'] as $row) {
-        $cpu_row_class = ($cpu_row_idx % 2 === 1) ? " class='imh-table-alt'" : "";
-        echo "<tr$cpu_row_class>";
-        $cpu_row_idx++;
-        echo "<td class='text-right'>" . htmlspecialchars($row['score']) . "</td>";
-        echo "<td>" . htmlspecialchars(cleanProcName($row['proc'])) . "</td>";
-        echo "</tr>";
+        foreach ($vals['cpu-list'] as $row) {
+            $cpu_row_class = ($cpu_row_idx % 2 === 1) ? " class='imh-table-alt'" : "";
+            echo "<tr$cpu_row_class>";
+            $cpu_row_idx++;
+            echo "<td class='text-right'>" . htmlspecialchars($row['score']) . "</td>";
+            echo "<td>" . htmlspecialchars(cleanProcName($row['proc'])) . "</td>";
+            echo "</tr>";
+        }
+        echo "</table>";
+
+        // Memory
+        echo "<h3>Memory Score: " . htmlspecialchars($vals['memory-score']) . "</h3>";
+        echo "<table class='sys-snap-tables'>";
+        echo "<thead><th>Memory</th><th>Process</th></thead>";
+
+        $mem_row_idx = 0;
+
+        foreach ($vals['memory-list'] as $row) {
+            $mem_row_class = ($mem_row_idx % 2 === 1) ? " class='imh-table-alt'" : "";
+            echo "<tr$mem_row_class>";
+            $mem_row_idx++;
+            echo "<td class='text-right'>" . htmlspecialchars($row['score']) . "</td>";
+            echo "<td>" . htmlspecialchars(cleanProcName($row['proc'])) . "</td>";
+            echo "</tr>";
+        }
+        echo "</table>";
+
+        // End collapsible
+        echo "</div>";
+
+        echo "</div>";
     }
-    echo "</table>";
-
-    // Memory
-    echo "<h3>Memory Score: " . htmlspecialchars($vals['memory-score']) . "</h3>";
-    echo "<table class='sys-snap-tables'>";
-    echo "<thead><th>Memory</th><th>Process</th></thead>";
-
-    $mem_row_idx = 0;
-
-    foreach ($vals['memory-list'] as $row) {
-        $mem_row_class = ($mem_row_idx % 2 === 1) ? " class='imh-table-alt'" : "";
-        echo "<tr$mem_row_class>";
-        $mem_row_idx++;
-        echo "<td class='text-right'>" . htmlspecialchars($row['score']) . "</td>";
-        echo "<td>" . htmlspecialchars(cleanProcName($row['proc'])) . "</td>";
-        echo "</tr>";
-    }
-    echo "</table>";
-
-    // End collapsible
     echo "</div>";
-
-    echo "</div>";
-}
-echo "</div>";
-
-
-
-
+} // End of the 'else' block for valid output
 
 //End of sys-snap tab content
 echo "</div>";
@@ -1519,9 +1593,107 @@ window.sysSnapSarPagingData = " . json_encode($sarData['data']) . ";
 echo '<div class="imh-box imh-box.margin-bottom"><div id="LinechartLoadavg"></div></div>';
 echo '<div class="imh-box imh-box.margin-bottom"><div id="LinechartPaging"></div></div>';
 
-echo '</div>';
+echo '</div>'; // Close tab-loadavg
 
 
+
+
+
+
+
+
+
+?>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        /**
+         * Helper function to calculate the quartiles and IQR for an array of numbers.
+         */
+        function getIQR(data) {
+            const sortedData = data.filter(n => !isNaN(n)).sort((a, b) => a - b);
+            if (sortedData.length < 4) { // Not enough data for a meaningful analysis
+                return {
+                    upperFence: Infinity
+                };
+            }
+
+            const mid = Math.floor(sortedData.length / 2);
+            const q1_index = Math.floor(mid / 2);
+            const q3_index = Math.floor((mid + sortedData.length) / 2);
+
+            const q1 = sortedData[q1_index];
+            const q3 = sortedData[q3_index];
+            const iqr = q3 - q1;
+
+            const upperFence = q3 + (1.5 * iqr);
+
+            return {
+                upperFence
+            };
+        }
+        /**
+         * Dynamically analyzes every numeric column in the sysstat table and highlights
+         * cells that are statistical outliers and operationally significant.
+         */
+        function highlightAllSignificantCells() {
+            const table = document.querySelector('#tab-loadavg .sys-snap-tables');
+            if (!table) return;
+            const headers = Array.from(table.querySelectorAll('thead th'));
+            const dataRows = table.querySelectorAll('tbody tr');
+
+            // --- Configuration ---
+            // Define specific minimum thresholds for critical metrics.
+            // Any column NOT in this list will default to 0.0, relying purely on statistics.
+            const minimumThresholds = {
+                'ldavg-1': 2.0,
+                'majflt/s': 1.0,
+                'runq-sz': 5.0,
+                'blocked': 5.0
+                // Example: 'pgpgout/s': 1000.0, // you could add more if needed
+            };
+            // Iterate over every column header
+            headers.forEach((header, columnIndex) => {
+                const columnName = header.textContent.trim();
+                // Skip the non-numeric 'Time' column
+                if (columnName === 'Time') {
+                    return;
+                }
+
+                // Get the minimum threshold for this column, or default to 0.0
+                const minimumThreshold = minimumThresholds[columnName] ?? 0.0;
+
+                // 1. Collect all data from the current column
+                const columnData = Array.from(dataRows).map(row => {
+                    const cell = row.querySelectorAll('td')[columnIndex];
+                    return cell ? parseFloat(cell.textContent) : NaN;
+                });
+
+                // 2. Calculate the statistical outlier threshold
+                const stats = getIQR(columnData);
+
+                // 3. Use the statistical threshold OR the baseline, whichever is higher
+                const finalThreshold = Math.max(stats.upperFence, minimumThreshold);
+
+                // 4. Loop through rows and highlight the cell if it exceeds the final threshold
+                dataRows.forEach(row => {
+                    const cell = row.querySelectorAll('td')[columnIndex];
+                    if (cell) {
+                        const value = parseFloat(cell.textContent);
+                        if (!isNaN(value) && value > finalThreshold) {
+                            cell.classList.add('high-load-cell');
+                        }
+                    }
+                });
+            });
+        }
+
+        highlightAllSignificantCells();
+    });
+</script>
+<?php
+
+
+// JavaScript for charts and interactivity
 
 $jsPath = $isCWPServer ? 'design/js/imh-snap-stat.js' : 'imh-snap-stat.js';
 

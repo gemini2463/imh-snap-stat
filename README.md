@@ -56,10 +56,14 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
 ## v0.1.7
 
-- Fix for some newer OS's using a new format to store sysstat logs.
+- Fix for some newer OS's that use a new format to store sysstat logs.
 
 ## v0.1.8
 
-- Fix handling of time-range inputs that fail to return sys-snap output.
-- "Scores from.." shows actual time-range when sys-snap has been running for less than 24 hours.
-- "Scores from.." shows local time zone.
+- Fixed error handling of time-range inputs that fail to return sys-snap output.
+- "Scores from..." now shows the actual time-range, specifically when sys-snap has been running for less than 24 hours.
+- "Scores from..." now shows the local time zone.
+- Added step to `chmod 0600` cache files when created.
+- Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted for rapid problem identification.
+- `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
+- Fixed caching functions to prevent path traversals and race conditions.
