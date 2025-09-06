@@ -64,6 +64,6 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 - "Scores from..." now shows the actual time-range, specifically when sys-snap has been running for less than 24 hours.
 - "Scores from..." now shows the local time zone.
 - Added step to `chmod 0600` cache files when created.
-- Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted for rapid problem identification.
+- Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted.
 - `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
 - Fixed caching functions to prevent path traversals and race conditions.

@@ -414,6 +414,11 @@ if ($isCPanelServer) {
         padding: 4px 8px;
     }
 
+    .legend-cell {
+        padding: 4px 8px;
+        border: 1px solid #000;
+    }
+
     .sys-snap-tables thead {
         background: #e6f2ff;
         color: #333;
@@ -552,6 +557,36 @@ if ($isCPanelServer) {
         /* A subtle border to contain the highlight */
     }
 
+    .moderate-load-cell {
+        background-color: #fff3cd !important;
+        /* pale amber/yellow */
+        color: #856404 !important;
+        /* darker amber text */
+        font-weight: bold;
+        outline: 1px solid #ffeeba;
+        /* subtle amber border */
+    }
+
+    .very-low-load-cell {
+        background-color: #e6ffea !important;
+        /* a very light green */
+        color: #0a6b2e !important;
+        /* darker green text for contrast */
+        font-weight: bold;
+        outline: 1px solid #b8ffd1;
+        /* subtle green border */
+    }
+
+    .low-load-cell {
+        background-color: #e6f0ff !important;
+        /* a very light blue */
+        color: #0a3e8a !important;
+        /* darker blue text for contrast */
+        font-weight: bold;
+        outline: 1px solid #cfe3ff;
+        /* subtle blue border */
+    }
+
     .imh-alert {
         color: #c00;
         margin: 1em;
@@ -630,6 +665,17 @@ if ($isCPanelServer) {
     .imh-table-responsive {
         width: 100%;
         overflow-x: auto;
+    }
+
+    .imh-legend td {
+        padding: 6px 10px;
+        font-size: 0.9em;
+        font-weight: normal;
+    }
+
+    .imh-legend .sys-snap-tables {
+        width: auto;
+        margin: 0.5em 0;
     }
 
     @media (max-width: 600px) {
@@ -1525,6 +1571,21 @@ class SarTableRenderer
                 <strong>fault/s</strong> - Number of page faults per second<br/>
                 <strong>majflt/s</strong> - Number of major page faults per second (requiring disk access)
             </p>
+            <h3>Legend</h3>
+            <table>
+                <tr>
+                <td class='high-load-cell legend-cell'>High Outlier</td>
+                </tr>
+                <tr>
+                <td class='moderate-load-cell legend-cell'>Moderate High</td>
+                </tr>
+                <tr>
+                <td class='low-load-cell legend-cell'>Moderate Low</td>
+                </tr>
+                <tr>
+                <td class='very-low-load-cell legend-cell'>Low Outlier</td>
+                </tr>
+            </table>
         </div>";
     }
 

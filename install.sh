@@ -108,6 +108,40 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Paths to check for sys-snap.pl
+SYS_SNAP_PATHS=(
+    "/opt/imh-sys-snap/bin/sys-snap.pl"
+    "/root/sys-snap.pl"
+    "/usr/local/bin/sys-snap.pl"
+    "/usr/bin/sys-snap.pl"
+)
+
+find_existing_sys_snap() {
+    for path in "${SYS_SNAP_PATHS[@]}"; do
+        if [[ -x "$path" ]]; then
+            print_message "$GREEN" "Found existing sys-snap.pl at $path"
+            echo "$path"
+            return 0
+        fi
+    done
+    return 1
+}
+
+check_imhbase_repo() {
+    if command_exists yum; then
+        if yum repolist all 2>/dev/null | grep -qw "imhbase"; then
+            return 0
+        fi
+    elif command_exists apt-cache; then
+        if apt-cache policy 2>/dev/null | grep -qw "imhbase"; then
+            return 0
+        elif grep -R "imhbase" /etc/apt/sources.list* 2>/dev/null | grep -q .; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Function to validate URL is accessible
 validate_url() {
     local url=$1
@@ -218,32 +252,38 @@ create_directory() {
 install_package() {
     local package=$1
 
+    # First check if already installed somewhere
+    if find_existing_sys_snap >/dev/null; then
+        print_message "$GREEN" "sys-snap.pl already installed. Skipping installation."
+        return 0
+    fi
+
     echo ""
     print_message "$YELLOW" "Checking repositories for imh-sys-snap..."
 
-    if command_exists yum; then
-        if yum install -y "imh-sys-snap"; then
-            print_message "$GREEN" "imh-sys-snap yum repository check complete."
-            return 0
+    if check_imhbase_repo; then
+        if command_exists yum; then
+            if yum install -y "imh-sys-snap"; then
+                print_message "$GREEN" "Installed imh-sys-snap from yum (imhbase)."
+                return 0
+            fi
+        elif command_exists apt-get; then
+            apt-get update
+            if apt-get install -y "imh-sys-snap"; then
+                print_message "$GREEN" "Installed imh-sys-snap from apt (imhbase)."
+                return 0
+            fi
         fi
-        print_message "$YELLOW" "Package imh-sys-snap not found in yum. Attempting manual installation."
-    elif command_exists apt-get; then
-        if apt-get update && apt-get install -y "imh-sys-snap"; then
-            print_message "$GREEN" "imh-sys-snap apt repository check complete."
-            return 0
-        fi
-        print_message "$YELLOW" "Package imh-sys-snap not found in apt. Attempting manual installation."
-    else
-        error_exit "No supported package manager found"
     fi
 
-    # Fallback: manual install
+    # Fallback to manual install
+    print_message "$YELLOW" "imhbase repo not found or package install failed. Falling back to manual install."
     mkdir -p /opt/imh-sys-snap/bin || error_exit "Could not create bin directory"
-    wget -O /opt/imh-sys-snap/bin/sys-snap.pl $BASE_URL/sys-snap.pl \
+    wget -O /opt/imh-sys-snap/bin/sys-snap.pl "$BASE_URL/sys-snap.pl" \
         || error_exit "Failed to download sys-snap.pl"
     chmod 744 /opt/imh-sys-snap/bin/sys-snap.pl
     echo y | /usr/bin/perl /opt/imh-sys-snap/bin/sys-snap.pl --start \
-        || error_exit "Failed to install sys-snap.pl"
+        || error_exit "Failed to install sys-snap.pl manually"
 }
 
 # Function to install for cPanel

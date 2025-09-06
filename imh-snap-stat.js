@@ -24054,85 +24054,120 @@ wo.createRoot(document.getElementById("LinechartLoadavg")).render(
 wo.createRoot(document.getElementById("LinechartPaging")).render(
   fe.jsx(ue.StrictMode, { children: fe.jsx(M2, {}) })
 );
-
 document.addEventListener("DOMContentLoaded", function () {
-  /**
-   * Helper function to calculate the quartiles and IQR for an array of numbers.
-   */
+  function median(sortedArr) {
+    const n = sortedArr.length;
+    const mid = Math.floor(n / 2);
+    if (n % 2 === 0) {
+      return (sortedArr[mid - 1] + sortedArr[mid]) / 2;
+    } else {
+      return sortedArr[mid];
+    }
+  }
+
   function getIQR(data) {
     const sortedData = data.filter((n) => !isNaN(n)).sort((a, b) => a - b);
-    if (sortedData.length < 4) {
-      // Not enough data for a meaningful analysis
+    const n = sortedData.length;
+
+    if (n < 4) {
       return {
+        q1: -Infinity,
+        q3: Infinity,
+        lowerFence: -Infinity,
         upperFence: Infinity,
+        flat: true,
       };
     }
 
-    const mid = Math.floor(sortedData.length / 2);
-    const q1_index = Math.floor(mid / 2);
-    const q3_index = Math.floor((mid + sortedData.length) / 2);
+    const q2 = median(sortedData);
+    const mid = Math.floor(n / 2);
 
-    const q1 = sortedData[q1_index];
-    const q3 = sortedData[q3_index];
+    let lowerHalf, upperHalf;
+    if (n % 2 === 0) {
+      lowerHalf = sortedData.slice(0, mid);
+      upperHalf = sortedData.slice(mid);
+    } else {
+      lowerHalf = sortedData.slice(0, mid); // exclude median
+      upperHalf = sortedData.slice(mid + 1); // exclude median
+    }
+
+    const q1 = median(lowerHalf);
+    const q3 = median(upperHalf);
     const iqr = q3 - q1;
 
-    const upperFence = q3 + 1.5 * iqr;
-
     return {
-      upperFence,
+      q1,
+      q3,
+      lowerFence: q1 - 1.5 * iqr,
+      upperFence: q3 + 1.5 * iqr,
+      flat: iqr === 0,
     };
   }
-  /**
-   * Dynamically analyzes every numeric column in the sysstat table and highlights
-   * cells that are statistical outliers and operationally significant.
-   */
+
   function highlightAllSignificantCells() {
     const table = document.querySelector("#tab-loadavg .sys-snap-tables");
     if (!table) return;
     const headers = Array.from(table.querySelectorAll("thead th"));
     const dataRows = table.querySelectorAll("tbody tr");
 
-    // --- Configuration ---
-    // Define specific minimum thresholds for critical metrics.
-    // Any column NOT in this list will default to 0.0, relying purely on statistics.
     const minimumThresholds = {
-      "ldavg-1": 2.0,
-      "majflt/s": 1.0,
-      "runq-sz": 5.0,
-      blocked: 5.0,
-      // Example: 'pgpgout/s': 1000.0, // you could add more if needed
+      "ldavg-1": 0,
+      "majflt/s": 0,
+      "runq-sz": 0,
     };
-    // Iterate over every column header
+
+    const highlightableColumns = [
+      "ldavg-1",
+      "ldavg-5",
+      "ldavg-15",
+      "pgpgin/s",
+      "pgpgout/s",
+    ];
+
     headers.forEach((header, columnIndex) => {
       const columnName = header.textContent.trim();
-      // Skip the non-numeric 'Time' column
-      if (columnName === "Time") {
-        return;
+      if (!highlightableColumns.includes(columnName)) {
+        return; // 🚫 skip columns not in the allow-list
       }
 
-      // Get the minimum threshold for this column, or default to 0.0
       const minimumThreshold = minimumThresholds[columnName] ?? 0.0;
-
-      // 1. Collect all data from the current column
       const columnData = Array.from(dataRows).map((row) => {
         const cell = row.querySelectorAll("td")[columnIndex];
         return cell ? parseFloat(cell.textContent) : NaN;
       });
 
-      // 2. Calculate the statistical outlier threshold
       const stats = getIQR(columnData);
 
-      // 3. Use the statistical threshold OR the baseline, whichever is higher
-      const finalThreshold = Math.max(stats.upperFence, minimumThreshold);
+      // For the high side we keep the existing behavior of enforcing a minimum absolute threshold.
+      const finalUpperThreshold = Math.max(stats.upperFence, minimumThreshold);
 
-      // 4. Loop through rows and highlight the cell if it exceeds the final threshold
       dataRows.forEach((row) => {
         const cell = row.querySelectorAll("td")[columnIndex];
-        if (cell) {
-          const value = parseFloat(cell.textContent);
-          if (!isNaN(value) && value > finalThreshold) {
-            cell.classList.add("high-load-cell");
-          }
+        if (!cell) return;
+        const text = cell.textContent;
+        const value = parseFloat(text);
+        if (isNaN(value)) return;
+
+        // Clear any previous highlighting classes so we don't accumulate them.
+        cell.classList.remove(
+          "high-load-cell",
+          "moderate-load-cell",
+          "low-load-cell",
+          "very-low-load-cell"
+        );
+
+        // High side checks
+        if (value > finalUpperThreshold) {
+          cell.classList.add("high-load-cell");
+        } else if (value > stats.q3 && value > minimumThreshold) {
+          cell.classList.add("moderate-load-cell");
+        }
+
+        // Low side checks
+        if (value < stats.lowerFence) {
+          cell.classList.add("very-low-load-cell"); // extreme low outlier
+        } else if (value < stats.q1) {
+          cell.classList.add("low-load-cell"); // moderate low
         }
       });
     });

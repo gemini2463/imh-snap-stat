@@ -137,52 +137,51 @@ function imh_guess_sar_interval()
 function imh_cached_shell_exec($tag, $command, $sar_interval)
 {
     $cache_file = imh_safe_cache_filename($tag);
-    $lock_file = $cache_file . '.lock';
+    $lock_file  = $cache_file . '.lock';
     $fp = fopen($lock_file, 'c');
-    // It's good practice to check if fopen succeeded
-    if ($fp === false) {
-        // Could not create lock file, maybe log an error.
-        // For now, fail gracefully.
-        return false;
+    if ($fp === false) return false;
+
+    $maxRetries = 10; // Try up to 10 times
+    $retryDelay = 200000; // 200ms (in microseconds)
+
+    $locked = false;
+    for ($i = 0; $i < $maxRetries; $i++) {
+        if (flock($fp, LOCK_EX | LOCK_NB)) {
+            $locked = true;
+            break;
+        }
+        // Another process has the lock → wait briefly
+        usleep($retryDelay);
     }
-    // Attempt to get an exclusive, non-blocking lock.
-    if (!flock($fp, LOCK_EX | LOCK_NB)) {
-        // Another process is already generating the cache.
-        // We can either wait, or just fail and let the next request try.
-        // Failing is often safer in a web context to avoid long waits.
+
+    if (!$locked) {
         fclose($fp);
-        return false; // Or you could try reading the cache file in a loop for a few seconds
+        return false; // Give up after retries
     }
+
     try {
+        // At this point we hold the lock
         if (file_exists($cache_file)) {
-            if (fileowner($cache_file) !== 0) { // 0 = root
-                unlink($cache_file); // treat as cache miss
-            } else {
-                $mtime = filemtime($cache_file);
-                if (time() - $mtime < $sar_interval) {
-                    $cached = file_get_contents($cache_file);
-                    if ($cached !== false && strlen(trim($cached)) > 0) {
-                        // This return is now SAFE. The 'finally' block will still execute.
-                        return $cached;
-                    }
+            $mtime = filemtime($cache_file);
+            if ($mtime && (time() - $mtime < $sar_interval)) {
+                $cached = file_get_contents($cache_file);
+                if ($cached !== false && strlen(trim($cached)) > 0) {
+                    return $cached;
                 }
             }
         }
+
         $out = shell_exec($command);
-        // Gracefully handle null/empty
         if (!is_string($out) || trim($out) === '') {
-            // This return is also SAFE. 'finally' will execute.
             return false;
         }
         file_put_contents($cache_file, $out);
         chmod($cache_file, 0600);
-        // This is the successful return. 'finally' will execute.
         return $out;
     } finally {
-        // --- THIS CLEANUP CODE IS GUARANTEED TO RUN ---
-        flock($fp, LOCK_UN); // Release the lock
-        fclose($fp);         // Close the file handle
-        @unlink($lock_file); // Delete the lock file
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        @unlink($lock_file);
     }
 }
 
@@ -415,6 +414,11 @@ if ($isCPanelServer) {
         padding: 4px 8px;
     }
 
+    .legend-cell {
+        padding: 4px 8px;
+        border: 1px solid #000;
+    }
+
     .sys-snap-tables thead {
         background: #e6f2ff;
         color: #333;
@@ -553,6 +557,36 @@ if ($isCPanelServer) {
         /* A subtle border to contain the highlight */
     }
 
+    .moderate-load-cell {
+        background-color: #fff3cd !important;
+        /* pale amber/yellow */
+        color: #856404 !important;
+        /* darker amber text */
+        font-weight: bold;
+        outline: 1px solid #ffeeba;
+        /* subtle amber border */
+    }
+
+    .very-low-load-cell {
+        background-color: #e6ffea !important;
+        /* a very light green */
+        color: #0a6b2e !important;
+        /* darker green text for contrast */
+        font-weight: bold;
+        outline: 1px solid #b8ffd1;
+        /* subtle green border */
+    }
+
+    .low-load-cell {
+        background-color: #e6f0ff !important;
+        /* a very light blue */
+        color: #0a3e8a !important;
+        /* darker blue text for contrast */
+        font-weight: bold;
+        outline: 1px solid #cfe3ff;
+        /* subtle blue border */
+    }
+
     .imh-alert {
         color: #c00;
         margin: 1em;
@@ -631,6 +665,17 @@ if ($isCPanelServer) {
     .imh-table-responsive {
         width: 100%;
         overflow-x: auto;
+    }
+
+    .imh-legend td {
+        padding: 6px 10px;
+        font-size: 0.9em;
+        font-weight: normal;
+    }
+
+    .imh-legend .sys-snap-tables {
+        width: auto;
+        margin: 0.5em 0;
     }
 
     @media (max-width: 600px) {
@@ -1264,18 +1309,23 @@ class SarDataProcessor
 
     public function getSarData(): array
     {
-        $sarQData = $this->getSarQData();
-        if (!$sarQData['data']) {
-            return ['success' => false, 'error' => 'Could not get sar -q data'];
+        try {
+            $sarQData = $this->getSarQData();
+            if (!$sarQData['data']) {
+                return ['success' => false, 'error' => 'Could not get sar data'];
+            }
+            $sarBData = $this->getSarBData();
+            $mergedData = $this->mergeSarData($sarQData['data'], $sarBData['data']);
+            $finalHeader = $this->createFinalHeader($sarQData['header']);
+            return [
+                'success' => true,
+                'header' => $finalHeader,
+                'data' => $mergedData
+            ];
+        } catch (Exception $e) {
+            error_log('SarDataProcessor Error: ' . $e->getMessage());
+            return ['success' => false, 'error' => 'System statistics temporarily unavailable'];
         }
-        $sarBData = $this->getSarBData();
-        $mergedData = $this->mergeSarData($sarQData['data'], $sarBData['data']);
-        $finalHeader = $this->createFinalHeader($sarQData['header']);
-        return [
-            'success' => true,
-            'header' => $finalHeader,
-            'data' => $mergedData
-        ];
     }
 
     private function initializeTimezone(): void
@@ -1286,19 +1336,25 @@ class SarDataProcessor
             date_default_timezone_set($longName);
         }
     }
+
     private function initializeDates(): void
     {
         $now = time();
         $this->currentTime = date('H:i:s', $now);
 
-        // Short (legacy) format: "03"
+        // Short format: "03"
         $this->todayShort = date('d', $now);
         $this->yesterdayShort = date('d', strtotime('yesterday', $now));
 
-        // Long (new) format: "20250903"
+        // Long format: "20250903"
         $this->todayLong = date('Ymd', $now);
         $this->yesterdayLong = date('Ymd', strtotime('yesterday', $now));
+
+        // Default until we know format
+        $this->today = $this->todayShort;
+        $this->yesterday = $this->yesterdayShort;
     }
+
     private function getSarQData(): array
     {
         $output = $this->executeSarCommands('-q');
@@ -1307,6 +1363,7 @@ class SarDataProcessor
         $data = $this->parseDataLines($lines, $header);
         return ['header' => $header, 'data' => $data];
     }
+
     private function getSarBData(): array
     {
         $output = $this->executeSarCommands('-B');
@@ -1315,6 +1372,7 @@ class SarDataProcessor
         $data = $this->parseDataLines($lines, $header);
         return ['header' => $header, 'data' => $data];
     }
+
     private function determineSarLogPath(): void
     {
         $candidates = [
@@ -1329,22 +1387,32 @@ class SarDataProcessor
                 if (file_exists($path . $date)) {
                     $this->sarLogPath = $path;
                     $this->dateFormat = (strlen($date) === 2) ? 'short' : 'long';
+
+                    if ($this->dateFormat === 'long') {
+                        $this->today = $this->todayLong;
+                        $this->yesterday = $this->yesterdayLong;
+                    } else {
+                        $this->today = $this->todayShort;
+                        $this->yesterday = $this->yesterdayShort;
+                    }
+
                     return;
                 }
             }
         }
 
-        // fallback
+        // fallback: assume short format
         $this->sarLogPath = self::SAR_LOG_PATHS[0];
         $this->dateFormat = 'short';
+        $this->today = $this->todayShort;
+        $this->yesterday = $this->yesterdayShort;
     }
+
     private function resolveDate(string $day): string
     {
-        if ($this->dateFormat === 'long') {
-            return ($day === 'yesterday') ? $this->yesterdayLong : $this->todayLong;
-        }
-        return ($day === 'yesterday') ? $this->yesterdayShort : $this->todayShort;
+        return ($day === 'yesterday') ? $this->yesterday : $this->today;
     }
+
     private function executeSarCommands(string $option): array
     {
         // For yesterday: cache for the day
@@ -1357,8 +1425,8 @@ class SarDataProcessor
         $ten_min = floor(date('i', $now) / 10) * 10;
         $tag2 = 'sar' . preg_replace('/[^a-zA-Z0-9]/', '', $option) . '_today_' . $this->today . "_h{$hour}_m{$ten_min}";
 
-        $cmd1 = "LC_ALL=C sar {$option} -f " . $this->sarLogPath . $this->resolveDate('yesterday') . " -s {$this->currentTime}";
-        $cmd2 = "LC_ALL=C sar {$option} -f " . $this->sarLogPath . $this->resolveDate('today') . " -e {$this->currentTime}";
+        $cmd1 = "LC_ALL=C sar " . escapeshellarg($option) . " -f " . $this->sarLogPath . $this->resolveDate('yesterday') . " -s {$this->currentTime}";
+        $cmd2 = "LC_ALL=C sar " . escapeshellarg($option) . " -f " . $this->sarLogPath . $this->resolveDate('today') . " -e {$this->currentTime}";
         return [
             imh_cached_shell_exec($tag1, $cmd1, $this->sarInterval),
             imh_cached_shell_exec($tag2, $cmd2, $this->sarInterval)
@@ -1383,6 +1451,7 @@ class SarDataProcessor
         }
         return $this->filterDataLines($allLines);
     }
+
     private function filterDataLines(array $lines): array
     {
         return array_filter($lines, function ($line) {
@@ -1394,6 +1463,7 @@ class SarDataProcessor
                 && !preg_match('/pgpgin\/s\s+pgpgout\/s\s+fault\/s/', $trimmed);
         });
     }
+
     private function extractHeader(array $lines, string $pattern, array $defaultHeader): array
     {
         foreach ($lines as $line) {
@@ -1405,6 +1475,7 @@ class SarDataProcessor
 
         return $defaultHeader;
     }
+
     private function parseDataLines(array $lines, array $header): array
     {
         $data = [];
@@ -1425,6 +1496,7 @@ class SarDataProcessor
 
         return $data;
     }
+
     private function mergeSarData(array $sarQData, array $sarBData): array
     {
         $bDataMap = [];
@@ -1451,6 +1523,7 @@ class SarDataProcessor
 
         return $merged;
     }
+
     private function createFinalHeader(array $qHeader): array
     {
         return array_merge($qHeader, array_diff(self::B_COLUMNS_TO_MERGE, $qHeader));
@@ -1460,10 +1533,12 @@ class SarDataProcessor
 class SarTableRenderer
 {
     private $csrfToken;
+
     public function __construct(string $csrfToken)
     {
         $this->csrfToken = $csrfToken;
     }
+
     public function render(array $sarData): string
     {
         if (!$sarData['success']) {
@@ -1474,6 +1549,7 @@ class SarTableRenderer
         $output .= $this->renderFooterNotes();
         return $output;
     }
+
     private function renderExplanation(): string
     {
         return "
@@ -1495,8 +1571,24 @@ class SarTableRenderer
                 <strong>fault/s</strong> - Number of page faults per second<br/>
                 <strong>majflt/s</strong> - Number of major page faults per second (requiring disk access)
             </p>
+            <h3>Legend</h3>
+            <table>
+                <tr>
+                <td class='high-load-cell legend-cell'>High Outlier</td>
+                </tr>
+                <tr>
+                <td class='moderate-load-cell legend-cell'>Moderate High</td>
+                </tr>
+                <tr>
+                <td class='low-load-cell legend-cell'>Moderate Low</td>
+                </tr>
+                <tr>
+                <td class='very-low-load-cell legend-cell'>Low Outlier</td>
+                </tr>
+            </table>
         </div>";
     }
+
     private function renderTable(array $header, array $data): string
     {
         $output = "<table class='sys-snap-tables'><thead>";
@@ -1526,6 +1618,7 @@ class SarTableRenderer
         }
         return $output . "</tbody></table>";
     }
+
     private function calculateTimeInterval(string $currentTimeStr, ?DateTime $previousTime): array
     {
         $currentTime = $this->parseTime($currentTimeStr);
@@ -1547,6 +1640,7 @@ class SarTableRenderer
             'end_min' => (int)$endTime->format('i')
         ];
     }
+
     private function parseTime(string $timeStr): ?DateTime
     {
         $format = (stripos($timeStr, 'AM') !== false || stripos($timeStr, 'PM') !== false)
@@ -1555,6 +1649,7 @@ class SarTableRenderer
 
         return DateTime::createFromFormat($format, $timeStr) ?: null;
     }
+
     private function renderTimeCell(string $time, array $interval): string
     {
         return "
@@ -1570,6 +1665,7 @@ class SarTableRenderer
             </form>
         </td>";
     }
+
     private function renderFooterNotes(): string
     {
         return "
@@ -1577,6 +1673,7 @@ class SarTableRenderer
         <p class='imh-small-note'>Values are from the most recent sar -q and sar -B samples.</p>";
     }
 }
+
 // Usage
 echo '<div id="tab-loadavg" class="tab-content">';
 
@@ -1599,98 +1696,6 @@ echo '</div>'; // Close tab-loadavg
 
 
 
-
-
-
-
-?>
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        /**
-         * Helper function to calculate the quartiles and IQR for an array of numbers.
-         */
-        function getIQR(data) {
-            const sortedData = data.filter(n => !isNaN(n)).sort((a, b) => a - b);
-            if (sortedData.length < 4) { // Not enough data for a meaningful analysis
-                return {
-                    upperFence: Infinity
-                };
-            }
-
-            const mid = Math.floor(sortedData.length / 2);
-            const q1_index = Math.floor(mid / 2);
-            const q3_index = Math.floor((mid + sortedData.length) / 2);
-
-            const q1 = sortedData[q1_index];
-            const q3 = sortedData[q3_index];
-            const iqr = q3 - q1;
-
-            const upperFence = q3 + (1.5 * iqr);
-
-            return {
-                upperFence
-            };
-        }
-        /**
-         * Dynamically analyzes every numeric column in the sysstat table and highlights
-         * cells that are statistical outliers and operationally significant.
-         */
-        function highlightAllSignificantCells() {
-            const table = document.querySelector('#tab-loadavg .sys-snap-tables');
-            if (!table) return;
-            const headers = Array.from(table.querySelectorAll('thead th'));
-            const dataRows = table.querySelectorAll('tbody tr');
-
-            // --- Configuration ---
-            // Define specific minimum thresholds for critical metrics.
-            // Any column NOT in this list will default to 0.0, relying purely on statistics.
-            const minimumThresholds = {
-                'ldavg-1': 2.0,
-                'majflt/s': 1.0,
-                'runq-sz': 5.0,
-                'blocked': 5.0
-                // Example: 'pgpgout/s': 1000.0, // you could add more if needed
-            };
-            // Iterate over every column header
-            headers.forEach((header, columnIndex) => {
-                const columnName = header.textContent.trim();
-                // Skip the non-numeric 'Time' column
-                if (columnName === 'Time') {
-                    return;
-                }
-
-                // Get the minimum threshold for this column, or default to 0.0
-                const minimumThreshold = minimumThresholds[columnName] ?? 0.0;
-
-                // 1. Collect all data from the current column
-                const columnData = Array.from(dataRows).map(row => {
-                    const cell = row.querySelectorAll('td')[columnIndex];
-                    return cell ? parseFloat(cell.textContent) : NaN;
-                });
-
-                // 2. Calculate the statistical outlier threshold
-                const stats = getIQR(columnData);
-
-                // 3. Use the statistical threshold OR the baseline, whichever is higher
-                const finalThreshold = Math.max(stats.upperFence, minimumThreshold);
-
-                // 4. Loop through rows and highlight the cell if it exceeds the final threshold
-                dataRows.forEach(row => {
-                    const cell = row.querySelectorAll('td')[columnIndex];
-                    if (cell) {
-                        const value = parseFloat(cell.textContent);
-                        if (!isNaN(value) && value > finalThreshold) {
-                            cell.classList.add('high-load-cell');
-                        }
-                    }
-                });
-            });
-        }
-
-        highlightAllSignificantCells();
-    });
-</script>
-<?php
 
 
 // JavaScript for charts and interactivity
