@@ -49,7 +49,7 @@ if ($isCPanelServer) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-} else { // CWP
+} elseif ($isCWPServer) { // CWP
     if (!isset($_SESSION['logged']) || $_SESSION['logged'] != 1 || !isset($_SESSION['username']) || $_SESSION['username'] !== 'root') {
         exit('Access Denied');
     }

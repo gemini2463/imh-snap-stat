@@ -2182,6 +2182,21 @@ lerna-debug.log*
 *.mp4
 </file>
 
+<file path="imh-snap-stat.conf">
+service=whostmgr
+url=/cgi/imh-snap-stat/index.php
+user=root
+phpHandler=/php/83/etc
+features=any
+displayname=SnapStat
+acls=any
+entryurl=imh-snap-stat/index.php
+target=_self
+icon=imh-snap-stat.png
+name=imh-snap-stat
+description=24-Hour System Statistics and Analysis Tool
+</file>
+
 <file path="imh-snap-stat.js">
 (function () {
   const e = document.createElement("link").relList;
@@ -26366,21 +26381,6 @@ document.addEventListener("DOMContentLoaded", function () {
 62e60f27d379a329ddf00464883011b6a883c794347329483a68a83725611210  imh-snap-stat.js
 </file>
 
-<file path="imh-snap-stat.conf">
-service=whostmgr
-url=/cgi/imh-snap-stat/index.php
-user=root
-phpHandler=/php/83/etc
-features=any
-displayname=SnapStat
-acls=any
-entryurl=imh-snap-stat/index.php
-target=_self
-icon=imh-snap-stat.png
-name=imh-snap-stat
-description=24-Hour System Statistics and Analysis Tool
-</file>
-
 <file path="imh-snap-stat.conf.sha256">
 65dcc89cdb3c127fbd5611dee880780fac191782f1885c6e193c47be8ab03960  imh-snap-stat.conf
 </file>
@@ -26509,7 +26509,7 @@ if ($isCPanelServer) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-} else { // CWP
+} elseif ($isCWPServer) { // CWP
     if (!isset($_SESSION['logged']) || $_SESSION['logged'] != 1 || !isset($_SESSION['username']) || $_SESSION['username'] !== 'root') {
         exit('Access Denied');
     }
@@ -28187,7 +28187,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="index.php.sha256">
-545cc54b83e6e9fc5ac320d4bf4a502a6857b811f713178b0fab90b1ed5ae1df  index.php
+fcbdbbccaea77a086ef8724a91cdd994db22dcc2f8204c3b15578fbae7d5dfbb  index.php
 </file>
 
 <file path="imh-snap-stat.php">
@@ -28242,7 +28242,7 @@ if ($isCPanelServer) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-} else { // CWP
+} elseif ($isCWPServer) { // CWP
     if (!isset($_SESSION['logged']) || $_SESSION['logged'] != 1 || !isset($_SESSION['username']) || $_SESSION['username'] !== 'root') {
         exit('Access Denied');
     }
@@ -29920,7 +29920,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="imh-snap-stat.php.sha256">
-545cc54b83e6e9fc5ac320d4bf4a502a6857b811f713178b0fab90b1ed5ae1df  imh-snap-stat.php
+fcbdbbccaea77a086ef8724a91cdd994db22dcc2f8204c3b15578fbae7d5dfbb  imh-snap-stat.php
 </file>
 
 <file path="install.sh">
