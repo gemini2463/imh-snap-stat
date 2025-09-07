@@ -12,7 +12,7 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
 # Installation
 
-- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | sh`
+- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | bash`
 
 [![Interquartile range](legend.png)](https://en.wikipedia.org/wiki/Interquartile_range)
 
