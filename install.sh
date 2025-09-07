@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Exit on error, undefined variables, pipe failures
-set -euo pipefail
+set -eu
 
 # Enable debugging output
 #set -x
