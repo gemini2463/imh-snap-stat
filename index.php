@@ -558,7 +558,7 @@ if ($isCPanelServer) {
     }
 
     .moderate-load-cell {
-        background-color: #fff3cd !important;
+        background-color: #ffeaaaff !important;
         /* pale amber/yellow */
         color: #856404 !important;
         /* darker amber text */
@@ -568,16 +568,6 @@ if ($isCPanelServer) {
     }
 
     .very-low-load-cell {
-        background-color: #e6ffea !important;
-        /* a very light green */
-        color: #0a6b2e !important;
-        /* darker green text for contrast */
-        font-weight: bold;
-        outline: 1px solid #b8ffd1;
-        /* subtle green border */
-    }
-
-    .low-load-cell {
         background-color: #e6f0ff !important;
         /* a very light blue */
         color: #0a3e8a !important;
@@ -585,6 +575,16 @@ if ($isCPanelServer) {
         font-weight: bold;
         outline: 1px solid #cfe3ff;
         /* subtle blue border */
+    }
+
+    .low-load-cell {
+        background-color: #e6ffea !important;
+        /* a very light green */
+        color: #0a6b2e !important;
+        /* darker green text for contrast */
+        font-weight: bold;
+        outline: 1px solid #b8ffd1;
+        /* subtle green border */
     }
 
     .imh-alert {
@@ -606,7 +606,7 @@ if ($isCPanelServer) {
     }
 
     .imh-small-note {
-        font-size: 0.9em;
+        font-size: 1.25em;
         color: #555;
     }
 
@@ -969,18 +969,22 @@ if (SYS_SNAP_EXECUTABLE === false) {
     //Sys-snap output
 
     // Determine display time range dynamically
+    $custom_range = (
+        isset($_POST['set_time']) &&
+        (!($_POST['start_hour'] == 0 && $_POST['start_min'] == 0 && $_POST['end_hour'] == 23 && $_POST['end_min'] == 59))
+    );
+
     $display_start = sprintf('%02d:%02d', $start_hour, $start_min);
     $display_end   = sprintf('%02d:%02d', $end_hour, $end_min);
 
-    if ($is_running && ctype_digit($etime)) {
+    if (!$custom_range && $is_running && ctype_digit($etime)) {
         $elapsed = (int)$etime;
-        if ($elapsed < 86400) { // less than 24h
+        if ($elapsed < 86400) {
             $now = time();
             $start_ts = $now - $elapsed;
             $display_start = date('H:i', $start_ts);
             $display_end   = date('H:i', $now);
         } else {
-            // running more than 24h, default full day
             $display_start = '00:00';
             $display_end   = '23:59';
         }
@@ -1574,16 +1578,19 @@ class SarTableRenderer
             <h3>Legend</h3>
             <table>
                 <tr>
-                <td class='high-load-cell legend-cell'>High Outlier</td>
+                <td class='high-load-cell legend-cell'>Column High Outlier</td>
                 </tr>
                 <tr>
-                <td class='moderate-load-cell legend-cell'>Moderate High</td>
+                <td class='moderate-load-cell legend-cell'>Column Moderate High</td>
                 </tr>
                 <tr>
-                <td class='low-load-cell legend-cell'>Moderate Low</td>
+                <td class='legend-cell'>Column Median</td>
                 </tr>
                 <tr>
-                <td class='very-low-load-cell legend-cell'>Low Outlier</td>
+                <td class='low-load-cell legend-cell'>Column Moderate Low</td>
+                </tr>
+                <tr>
+                <td class='very-low-load-cell legend-cell'>Column Low Outlier</td>
                 </tr>
             </table>
         </div>";
@@ -1657,6 +1664,7 @@ class SarTableRenderer
             <form method='post' style='display:inline;' class='sar-time-link-form'>
                 <input type='hidden' name='csrf_token' value='" . htmlspecialchars($this->csrfToken) . "'>
                 <input type='hidden' name='form' value='time_range'>
+                <input type='hidden' name='set_time' value='1'>
                 <input type='hidden' name='start_hour' value='{$interval['start_hour']}'>
                 <input type='hidden' name='start_min' value='{$interval['start_min']}'>
                 <input type='hidden' name='end_hour' value='{$interval['end_hour']}'>
