@@ -3,9 +3,12 @@
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
 [![Demo Video](screenshot.png)](https://www.youtube.com/watch?v=l6C9AdDgy_I)
+(https://www.youtube.com/watch?v=l6C9AdDgy_I)
 
 - cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
 - CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
+
+(screenshot2.png)
 
 # Installation
 
