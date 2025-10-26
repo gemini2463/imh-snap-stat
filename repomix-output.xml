@@ -26399,7 +26399,7 @@ document.addEventListener("DOMContentLoaded", function () {
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.8
+ * Version: 0.1.9
  */
 
 
@@ -26474,7 +26474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-define('IMH_SAR_CACHE_DIR', '/root/tmp/imh-snap-stat');
+define('IMH_SAR_CACHE_DIR', '/var/cache/imh-snap-stat');
 
 if (!is_dir(IMH_SAR_CACHE_DIR)) {
     mkdir(IMH_SAR_CACHE_DIR, 0700, true);
@@ -26655,12 +26655,11 @@ function find_executable(string $command, array $fallback_paths = [])
 // Define the list of common locations for sys-snap.pl
 const SYS_SNAP_FALLBACK_PATHS = [
     '/opt/imh-sys-snap/bin/sys-snap.pl',
-    '/root/sys-snap.pl',
     '/usr/local/bin/sys-snap.pl',
     '/usr/bin/sys-snap.pl'
 ];
 // Find the executable and store its path in a constant.
-define('SYS_SNAP_EXECUTABLE', find_executable('sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
+define('SYS_SNAP_EXECUTABLE', find_executable('/root/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 
@@ -27279,7 +27278,7 @@ if (SYS_SNAP_EXECUTABLE === false) {
         echo '</span>';
 
         // Start button.
-        echo '
+        echo '<br/>
 <form method="post">
   <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
   <input type="hidden" name="form"       value="sys_snap_control">
@@ -27830,7 +27829,10 @@ class SarDataProcessor
         $allLines = [];
 
         foreach ($outputs as $index => $output) {
-            $lines = array_filter(array_map('trim', explode("\n", $output)));
+            if ($output === false || $output === null) {
+                continue; // skip invalid output
+            }
+            $lines = array_filter(array_map('trim', explode("\n", (string) $output)));
 
             // Remove headers from second output
             if ($index > 0) {
@@ -28123,7 +28125,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="index.php.sha256">
-fcc8bec3a07af783b87b0b2767ffacba5e9c28785e57583c36ebdfd42770e2d7  index.php
+f0ccc0a53807453e71f9a9fcee4c44bcfdd6cf0dc230d354be661520c2886efc  index.php
 </file>
 
 <file path="install.sh">
@@ -28135,7 +28137,7 @@ set -eu
 #set -x
 
 # Script metadata
-readonly SCRIPT_VERSION="0.1.8"
+readonly SCRIPT_VERSION="0.1.9"
 readonly SCRIPT_NAME="imh-snap-stat"
 readonly BASE_URL="https://raw.githubusercontent.com/gemini2463/$SCRIPT_NAME/master"
 
@@ -28705,83 +28707,6 @@ main() {
 main "$@"
 </file>
 
-<file path="README.md">
-# SnapStat (imh-snap-stat), v0.1.8
-
-sys-snap and sysstat Web Interface for cPanel/WHM and CWP
-
-[![Demo Video](screenshot.png)](https://www.youtube.com/watch?v=l6C9AdDgy_I)
-[Demo Video on YouTube](https://www.youtube.com/watch?v=l6C9AdDgy_I)
-
-- cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
-- CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
-
-![Screenshot](screenshot2.png)
-
-# Installation
-
-- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | bash`
-
-[![Interquartile range](legend.png)](https://en.wikipedia.org/wiki/Interquartile_range)
-
-# Files
-
-## Shell installer
-
-- install.sh
-
-## Main script
-
-- index.php - Identical to `imh-snap-stat.php`.
-- index.php.sha256 - `sha256sum index.php > index.php.sha256`
-- imh-snap-stat.php - Identical to `index.php`.
-- imh-snap-stat.php.sha256 - `sha256sum imh-snap-stat.php > imh-snap-stat.php.sha256`
-
-## Javascript
-
-- imh-snap-stat.js - Bundle React or any other javascript in this file.
-- imh-snap-stat.js.sha256 - `sha256sum imh-snap-stat.js > imh-snap-stat.js.sha256`
-
-## Icon
-
-- imh-snap-stat.png - [48x48 png image](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-plugin-files/#icons)
-- imh-snap-stat.png.sha256 - `sha256sum imh-snap-stat.png > imh-snap-stat.png.sha256`
-
-## cPanel conf
-
-- imh-snap-stat.conf - [AppConfig Configuration File](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-appconfig-configuration-file)
-- imh-snap-stat.conf.sha256 - `sha256sum imh-snap-stat.conf > imh-snap-stat.conf.sha256`
-
-## CWP include
-
-- imh-plugins.php - [CWP include](https://wiki.centos-webpanel.com/how-to-build-a-cwp-module)
-- imh-plugins.php.sha256 - `sha256sum imh-plugins.php > imh-plugins.php.sha256`
-
-## sha256 one-liner
-
-- `for file in index.php imh-plugins.php imh-snap-stat.conf imh-snap-stat.js imh-snap-stat.php imh-snap-stat.png; do sha256sum "$file" > "$file.sha256"; done`
-
-# Changelog
-
-## v0.1.6 - Release
-
-- Release
-
-## v0.1.7
-
-- Fix for some newer OS's that use a new format to store sysstat logs.
-
-## v0.1.8
-
-- Fixed error handling of time-range inputs that fail to return sys-snap output.
-- "Scores from..." now shows the actual time-range, specifically when sys-snap has been running for less than 24 hours.
-- "Scores from..." now shows the local time zone.
-- Added step to `chmod 0600` cache files when created.
-- Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted.
-- `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
-- Fixed caching functions to prevent path traversals and race conditions.
-</file>
-
 <file path="imh-snap-stat.php">
 <?php
 // SnapStat
@@ -28796,7 +28721,7 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.8
+ * Version: 0.1.9
  */
 
 
@@ -28871,7 +28796,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-define('IMH_SAR_CACHE_DIR', '/root/tmp/imh-snap-stat');
+define('IMH_SAR_CACHE_DIR', '/var/cache/imh-snap-stat');
 
 if (!is_dir(IMH_SAR_CACHE_DIR)) {
     mkdir(IMH_SAR_CACHE_DIR, 0700, true);
@@ -29052,12 +28977,11 @@ function find_executable(string $command, array $fallback_paths = [])
 // Define the list of common locations for sys-snap.pl
 const SYS_SNAP_FALLBACK_PATHS = [
     '/opt/imh-sys-snap/bin/sys-snap.pl',
-    '/root/sys-snap.pl',
     '/usr/local/bin/sys-snap.pl',
     '/usr/bin/sys-snap.pl'
 ];
 // Find the executable and store its path in a constant.
-define('SYS_SNAP_EXECUTABLE', find_executable('sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
+define('SYS_SNAP_EXECUTABLE', find_executable('/root/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 
@@ -29676,7 +29600,7 @@ if (SYS_SNAP_EXECUTABLE === false) {
         echo '</span>';
 
         // Start button.
-        echo '
+        echo '<br/>
 <form method="post">
   <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
   <input type="hidden" name="form"       value="sys_snap_control">
@@ -30227,7 +30151,10 @@ class SarDataProcessor
         $allLines = [];
 
         foreach ($outputs as $index => $output) {
-            $lines = array_filter(array_map('trim', explode("\n", $output)));
+            if ($output === false || $output === null) {
+                continue; // skip invalid output
+            }
+            $lines = array_filter(array_map('trim', explode("\n", (string) $output)));
 
             // Remove headers from second output
             if ($index > 0) {
@@ -30520,7 +30447,84 @@ if ($isCPanelServer) {
 </file>
 
 <file path="imh-snap-stat.php.sha256">
-fcc8bec3a07af783b87b0b2767ffacba5e9c28785e57583c36ebdfd42770e2d7  imh-snap-stat.php
+f0ccc0a53807453e71f9a9fcee4c44bcfdd6cf0dc230d354be661520c2886efc  imh-snap-stat.php
+</file>
+
+<file path="README.md">
+# SnapStat (imh-snap-stat), v0.1.9
+
+sys-snap and sysstat Web Interface for cPanel/WHM and CWP
+
+[![Demo Video](screenshot.png)](https://www.youtube.com/watch?v=l6C9AdDgy_I)
+[Demo Video on YouTube](https://www.youtube.com/watch?v=l6C9AdDgy_I)
+
+- cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
+- CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
+
+![Screenshot](screenshot2.png)
+
+# Installation
+
+- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | bash`
+
+[![Interquartile range](legend.png)](https://en.wikipedia.org/wiki/Interquartile_range)
+
+# Files
+
+## Shell installer
+
+- install.sh
+
+## Main script
+
+- index.php - Identical to `imh-snap-stat.php`.
+- index.php.sha256 - `sha256sum index.php > index.php.sha256`
+- imh-snap-stat.php - Identical to `index.php`.
+- imh-snap-stat.php.sha256 - `sha256sum imh-snap-stat.php > imh-snap-stat.php.sha256`
+
+## Javascript
+
+- imh-snap-stat.js - Bundle React or any other javascript in this file.
+- imh-snap-stat.js.sha256 - `sha256sum imh-snap-stat.js > imh-snap-stat.js.sha256`
+
+## Icon
+
+- imh-snap-stat.png - [48x48 png image](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-plugin-files/#icons)
+- imh-snap-stat.png.sha256 - `sha256sum imh-snap-stat.png > imh-snap-stat.png.sha256`
+
+## cPanel conf
+
+- imh-snap-stat.conf - [AppConfig Configuration File](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-appconfig-configuration-file)
+- imh-snap-stat.conf.sha256 - `sha256sum imh-snap-stat.conf > imh-snap-stat.conf.sha256`
+
+## CWP include
+
+- imh-plugins.php - [CWP include](https://wiki.centos-webpanel.com/how-to-build-a-cwp-module)
+- imh-plugins.php.sha256 - `sha256sum imh-plugins.php > imh-plugins.php.sha256`
+
+## sha256 one-liner
+
+- `for file in index.php imh-plugins.php imh-snap-stat.conf imh-snap-stat.js imh-snap-stat.php imh-snap-stat.png; do sha256sum "$file" > "$file.sha256"; done`
+
+# Changelog
+
+## v0.1.6 - Release
+
+- Release
+
+## v0.1.7
+
+- Fix for some newer OS's that use a new format to store sysstat logs.
+
+## v0.1.8
+
+- Fixed error handling of time-range inputs that fail to return sys-snap output.
+- "Scores from..." now shows the actual time-range, specifically when sys-snap has been running for less than 24 hours.
+- "Scores from..." now shows the local time zone.
+- Added step to `chmod 0600` cache files when created.
+- Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted.
+- `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
+- Fixed caching functions to prevent path traversals and race conditions.
 </file>
 
 </files>

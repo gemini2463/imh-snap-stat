@@ -11,7 +11,7 @@
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.8
+ * Version: 0.1.9
  */
 
 
@@ -86,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-define('IMH_SAR_CACHE_DIR', '/root/tmp/imh-snap-stat');
+define('IMH_SAR_CACHE_DIR', '/var/cache/imh-snap-stat');
 
 if (!is_dir(IMH_SAR_CACHE_DIR)) {
     mkdir(IMH_SAR_CACHE_DIR, 0700, true);
@@ -267,12 +267,11 @@ function find_executable(string $command, array $fallback_paths = [])
 // Define the list of common locations for sys-snap.pl
 const SYS_SNAP_FALLBACK_PATHS = [
     '/opt/imh-sys-snap/bin/sys-snap.pl',
-    '/root/sys-snap.pl',
     '/usr/local/bin/sys-snap.pl',
     '/usr/bin/sys-snap.pl'
 ];
 // Find the executable and store its path in a constant.
-define('SYS_SNAP_EXECUTABLE', find_executable('sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
+define('SYS_SNAP_EXECUTABLE', find_executable('/root/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 
@@ -891,7 +890,7 @@ if (SYS_SNAP_EXECUTABLE === false) {
         echo '</span>';
 
         // Start button.
-        echo '
+        echo '<br/>
 <form method="post">
   <input type="hidden" name="csrf_token" value="' . htmlspecialchars($CSRF_TOKEN) . '">
   <input type="hidden" name="form"       value="sys_snap_control">
@@ -1442,7 +1441,10 @@ class SarDataProcessor
         $allLines = [];
 
         foreach ($outputs as $index => $output) {
-            $lines = array_filter(array_map('trim', explode("\n", $output)));
+            if ($output === false || $output === null) {
+                continue; // skip invalid output
+            }
+            $lines = array_filter(array_map('trim', explode("\n", (string) $output)));
 
             // Remove headers from second output
             if ($index > 0) {
