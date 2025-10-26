@@ -27163,7 +27163,7 @@ function imh_safe_cache_filename(string $tag): string
 
 function imh_guess_sar_interval()
 {
-    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
+    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | grep -v 'LINUX RESTART' | head -2 | awk '{print $1,$2}'";
     $out = safe_shell_exec($cmd, 3);
     if (!is_string($out)) {
         return 600; // fallback if shell_exec failed
@@ -28781,7 +28781,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="index.php.sha256">
-f0ccc0a53807453e71f9a9fcee4c44bcfdd6cf0dc230d354be661520c2886efc  index.php
+06d13016b00010166500a58e6442be7e30c851c15b19c6b423597a3713051b62  index.php
 </file>
 
 <file path="imh-snap-stat.php">
@@ -28906,7 +28906,7 @@ function imh_safe_cache_filename(string $tag): string
 
 function imh_guess_sar_interval()
 {
-    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
+    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | grep -v 'LINUX RESTART' | head -2 | awk '{print $1,$2}'";
     $out = safe_shell_exec($cmd, 3);
     if (!is_string($out)) {
         return 600; // fallback if shell_exec failed
@@ -30524,7 +30524,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="imh-snap-stat.php.sha256">
-f0ccc0a53807453e71f9a9fcee4c44bcfdd6cf0dc230d354be661520c2886efc  imh-snap-stat.php
+06d13016b00010166500a58e6442be7e30c851c15b19c6b423597a3713051b62  imh-snap-stat.php
 </file>
 
 </files>

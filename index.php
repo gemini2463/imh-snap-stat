@@ -119,7 +119,7 @@ function imh_safe_cache_filename(string $tag): string
 
 function imh_guess_sar_interval()
 {
-    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
+    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | grep -v 'LINUX RESTART' | head -2 | awk '{print $1,$2}'";
     $out = safe_shell_exec($cmd, 3);
     if (!is_string($out)) {
         return 600; // fallback if shell_exec failed
