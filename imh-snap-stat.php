@@ -119,19 +119,43 @@ function imh_safe_cache_filename(string $tag): string
 
 function imh_guess_sar_interval()
 {
-    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
-    $out = safe_shell_exec($cmd, 3);
+    // primary command (24-hour format expectation)
+    $cmd1 = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
+    $out = safe_shell_exec($cmd1, 3);
+
     if (!is_string($out)) {
-        return 600; // fallback if shell_exec failed
+        return 600; // shell_exec failed
     }
+
     $lines = array_filter(array_map('trim', explode("\n", $out)));
-    if (count($lines) < 2) return 600; // fallback
+    if (count($lines) < 2) {
+        return 600; // not enough lines to compare
+    }
+
     $t1 = strtotime($lines[0]);
     $t2 = strtotime($lines[1]);
-    if ($t1 === false || $t2 === false) return 600;
-    $interval = $t2 - $t1;
-    if ($interval > 0 && $interval < 3600) return $interval;
-    return 600;
+    $interval = ($t1 !== false && $t2 !== false) ? $t2 - $t1 : false;
+
+    // Edge case: failed to parse times or got a nonsensical interval
+    if ($interval === false || $interval <= 0 || $interval >= 3600) {
+        // fallback for 12-hour AM/PM format
+        $cmd2 = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{1,2}:[0-9]{2}:[0-9]{2} (A|P)M' | head -2 | awk '{print $1, $2}'";
+        $out2 = safe_shell_exec($cmd2, 3);
+        if (is_string($out2)) {
+            $lines2 = array_filter(array_map('trim', explode("\n", $out2)));
+            if (count($lines2) >= 2) {
+                $t1 = strtotime($lines2[0]);
+                $t2 = strtotime($lines2[1]);
+                $interval = ($t1 !== false && $t2 !== false) ? $t2 - $t1 : false;
+                if ($interval > 0 && $interval < 3600) {
+                    return $interval;
+                }
+            }
+        }
+        return 600; // still failed → default fallback
+    }
+
+    return $interval;
 }
 
 function imh_cached_shell_exec($tag, $command, $sar_interval)
