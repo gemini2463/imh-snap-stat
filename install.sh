@@ -438,7 +438,7 @@ update_cwp_config() {
         if grep -Eq "<\?php.*\?>" "$target"; then
             # Case 1: One-liner <?php ... ?>
             # Insert after <?php and before existing content
-            sed -E "s#(<\?php)(.*)(\?>)#\1\n${include_statement}\n\2\n\3#" "$target" > "$temp_file"
+            sed -E "0,/<\?php.*\?>/s#(<\?php)(.*)(\?>)#\1\n${include_statement}\n\2\n\3#" "$target" > "$temp_file"
         elif grep -q "?>" "$target"; then
             # Case 2: Multi-line with closing tag
             awk -v inc="$include_statement" '
