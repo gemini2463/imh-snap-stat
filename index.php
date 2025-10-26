@@ -119,31 +119,19 @@ function imh_safe_cache_filename(string $tag): string
 
 function imh_guess_sar_interval()
 {
-    // Force 24-hour timestamps from sar
-    $cmd = "LANG=C LC_TIME=C sar -q 2>/dev/null | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
+    $cmd = "LANG=C sar -q 2>&1 | grep -E '^[0-9]{2}:[0-9]{2}:[0-9]{2}' | head -2 | awk '{print $1}'";
     $out = safe_shell_exec($cmd, 3);
-
     if (!is_string($out)) {
-        return 600; // shell_exec failed
+        return 600; // fallback if shell_exec failed
     }
-
     $lines = array_filter(array_map('trim', explode("\n", $out)));
-    if (count($lines) < 2) {
-        return 600; // incomplete data
-    }
-
+    if (count($lines) < 2) return 600; // fallback
     $t1 = strtotime($lines[0]);
     $t2 = strtotime($lines[1]);
-    if ($t1 === false || $t2 === false) {
-        return 600; // could not parse time
-    }
-
+    if ($t1 === false || $t2 === false) return 600;
     $interval = $t2 - $t1;
-    if ($interval > 0 && $interval < 3600) {
-        return $interval;
-    }
-
-    return 600; // fallback
+    if ($interval > 0 && $interval < 3600) return $interval;
+    return 600;
 }
 
 function imh_cached_shell_exec($tag, $command, $sar_interval)
