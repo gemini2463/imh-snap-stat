@@ -266,12 +266,12 @@ function find_executable(string $command, array $fallback_paths = [])
 
 // Define the list of common locations for sys-snap.pl
 const SYS_SNAP_FALLBACK_PATHS = [
-    '/opt/imh-sys-snap/bin/sys-snap.pl',
+    '/root/sys-snap.pl',
     '/usr/local/bin/sys-snap.pl',
     '/usr/bin/sys-snap.pl'
 ];
 // Find the executable and store its path in a constant.
-define('SYS_SNAP_EXECUTABLE', find_executable('/root/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
+define('SYS_SNAP_EXECUTABLE', find_executable('/opt/imh-sys-snap/bin/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 

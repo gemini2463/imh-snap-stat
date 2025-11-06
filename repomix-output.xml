@@ -27310,12 +27310,12 @@ function find_executable(string $command, array $fallback_paths = [])
 
 // Define the list of common locations for sys-snap.pl
 const SYS_SNAP_FALLBACK_PATHS = [
-    '/opt/imh-sys-snap/bin/sys-snap.pl',
+    '/root/sys-snap.pl',
     '/usr/local/bin/sys-snap.pl',
     '/usr/bin/sys-snap.pl'
 ];
 // Find the executable and store its path in a constant.
-define('SYS_SNAP_EXECUTABLE', find_executable('/root/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
+define('SYS_SNAP_EXECUTABLE', find_executable('/opt/imh-sys-snap/bin/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 
@@ -28781,7 +28781,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="index.php.sha256">
-06d13016b00010166500a58e6442be7e30c851c15b19c6b423597a3713051b62  index.php
+5f60091f046303497452af20fd1d8310249ca812487bd37b7b4fd8961562adaa  index.php
 </file>
 
 <file path="imh-snap-stat.php">
@@ -29053,12 +29053,12 @@ function find_executable(string $command, array $fallback_paths = [])
 
 // Define the list of common locations for sys-snap.pl
 const SYS_SNAP_FALLBACK_PATHS = [
-    '/opt/imh-sys-snap/bin/sys-snap.pl',
+    '/root/sys-snap.pl',
     '/usr/local/bin/sys-snap.pl',
     '/usr/bin/sys-snap.pl'
 ];
 // Find the executable and store its path in a constant.
-define('SYS_SNAP_EXECUTABLE', find_executable('/root/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
+define('SYS_SNAP_EXECUTABLE', find_executable('/opt/imh-sys-snap/bin/sys-snap.pl', SYS_SNAP_FALLBACK_PATHS));
 
 
 
@@ -30524,7 +30524,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="imh-snap-stat.php.sha256">
-06d13016b00010166500a58e6442be7e30c851c15b19c6b423597a3713051b62  imh-snap-stat.php
+5f60091f046303497452af20fd1d8310249ca812487bd37b7b4fd8961562adaa  imh-snap-stat.php
 </file>
 
 </files>
