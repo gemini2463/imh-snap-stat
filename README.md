@@ -72,3 +72,8 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 - Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted.
 - `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
 - Fixed caching functions to prevent path traversals and race conditions.
+
+## v0.1.9
+
+- Set the IMH-installed sys-snap.pl path as default instead of cPanel's /root/sys-snap.pl path.
+- Install script CWP 3rdparty.php fixes for a double-insertion bug.
