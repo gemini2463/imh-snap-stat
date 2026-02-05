@@ -11,7 +11,7 @@
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.9
+ * Version: 0.2.0
  */
 
 
@@ -1382,29 +1382,42 @@ class SarDataProcessor
             $this->yesterdayShort,
             $this->todayShort,
             $this->yesterdayLong,
-            $this->todayLong
+            $this->todayLong,
         ];
+
+        $bestPath = null;
+        $bestDate = null;
+        $bestMtime = -1;
 
         foreach (self::SAR_LOG_PATHS as $path) {
             foreach ($candidates as $date) {
-                if (file_exists($path . $date)) {
-                    $this->sarLogPath = $path;
-                    $this->dateFormat = (strlen($date) === 2) ? 'short' : 'long';
+                $file = $path . $date;
+                if (!file_exists($file)) continue;
 
-                    if ($this->dateFormat === 'long') {
-                        $this->today = $this->todayLong;
-                        $this->yesterday = $this->yesterdayLong;
-                    } else {
-                        $this->today = $this->todayShort;
-                        $this->yesterday = $this->yesterdayShort;
-                    }
-
-                    return;
+                $mtime = @filemtime($file);
+                if ($mtime !== false && $mtime > $bestMtime) {
+                    $bestMtime = $mtime;
+                    $bestPath = $path;
+                    $bestDate = $date;
                 }
             }
         }
 
-        // fallback: assume short format
+        if ($bestPath !== null && $bestDate !== null) {
+            $this->sarLogPath = $bestPath;
+            $this->dateFormat = (strlen($bestDate) === 2) ? 'short' : 'long';
+
+            if ($this->dateFormat === 'long') {
+                $this->today = $this->todayLong;
+                $this->yesterday = $this->yesterdayLong;
+            } else {
+                $this->today = $this->todayShort;
+                $this->yesterday = $this->yesterdayShort;
+            }
+            return;
+        }
+
+        // fallback
         $this->sarLogPath = self::SAR_LOG_PATHS[0];
         $this->dateFormat = 'short';
         $this->today = $this->todayShort;

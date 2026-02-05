@@ -1,4 +1,4 @@
-# SnapStat (imh-snap-stat), v0.1.9
+# SnapStat (imh-snap-stat), v0.2.0
 
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
@@ -77,3 +77,7 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
 - Set the IMH-installed sys-snap.pl path as default instead of cPanel's /root/sys-snap.pl path.
 - Install script CWP 3rdparty.php fixes for a double-insertion bug.
+
+## v0.2.0
+
+- Fix for determineSarLogPath() edge cases when /var/log/sa stale files exist.

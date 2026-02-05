@@ -1,10 +1,10 @@
-This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
 
 <file_summary>
 This section contains a summary of this file.
 
 <purpose>
-This file contains a packed representation of the entire repository's contents.
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
 It is designed to be easily consumable by AI systems for analysis, code review,
 or other automated processes.
 </purpose>
@@ -32,6 +32,7 @@ The content is organized as follows:
 <notes>
 - Some files may have been excluded based on .gitignore rules and Repomix's configuration
 - Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: **/node_modules/**, **/dist/**, **/build/**, **/.git/**, **/.venv/**, **/__pycache__/**, **/*.env, **/*.log
 - Files matching patterns in .gitignore are excluded
 - Files matching default ignore patterns are excluded
 - Files are sorted by Git change count (files with more changes are at the bottom)
@@ -26394,7 +26395,7 @@ set -eu
 #set -x
 
 # Script metadata
-readonly SCRIPT_VERSION="0.1.9"
+readonly SCRIPT_VERSION="0.2.0"
 readonly SCRIPT_NAME="imh-snap-stat"
 readonly BASE_URL="https://raw.githubusercontent.com/gemini2463/$SCRIPT_NAME/master"
 
@@ -26965,7 +26966,7 @@ main "$@"
 </file>
 
 <file path="README.md">
-# SnapStat (imh-snap-stat), v0.1.9
+# SnapStat (imh-snap-stat), v0.2.0
 
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
@@ -27039,6 +27040,15 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 - Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted.
 - `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
 - Fixed caching functions to prevent path traversals and race conditions.
+
+## v0.1.9
+
+- Set the IMH-installed sys-snap.pl path as default instead of cPanel's /root/sys-snap.pl path.
+- Install script CWP 3rdparty.php fixes for a double-insertion bug.
+
+## v0.2.0
+
+- Fix for determineSarLogPath() edge cases when /var/log/sa stale files exist.
 </file>
 
 <file path="index.php">
@@ -27055,7 +27065,7 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.9
+ * Version: 0.2.0
  */
 
 
@@ -28426,29 +28436,42 @@ class SarDataProcessor
             $this->yesterdayShort,
             $this->todayShort,
             $this->yesterdayLong,
-            $this->todayLong
+            $this->todayLong,
         ];
+
+        $bestPath = null;
+        $bestDate = null;
+        $bestMtime = -1;
 
         foreach (self::SAR_LOG_PATHS as $path) {
             foreach ($candidates as $date) {
-                if (file_exists($path . $date)) {
-                    $this->sarLogPath = $path;
-                    $this->dateFormat = (strlen($date) === 2) ? 'short' : 'long';
+                $file = $path . $date;
+                if (!file_exists($file)) continue;
 
-                    if ($this->dateFormat === 'long') {
-                        $this->today = $this->todayLong;
-                        $this->yesterday = $this->yesterdayLong;
-                    } else {
-                        $this->today = $this->todayShort;
-                        $this->yesterday = $this->yesterdayShort;
-                    }
-
-                    return;
+                $mtime = @filemtime($file);
+                if ($mtime !== false && $mtime > $bestMtime) {
+                    $bestMtime = $mtime;
+                    $bestPath = $path;
+                    $bestDate = $date;
                 }
             }
         }
 
-        // fallback: assume short format
+        if ($bestPath !== null && $bestDate !== null) {
+            $this->sarLogPath = $bestPath;
+            $this->dateFormat = (strlen($bestDate) === 2) ? 'short' : 'long';
+
+            if ($this->dateFormat === 'long') {
+                $this->today = $this->todayLong;
+                $this->yesterday = $this->yesterdayLong;
+            } else {
+                $this->today = $this->todayShort;
+                $this->yesterday = $this->yesterdayShort;
+            }
+            return;
+        }
+
+        // fallback
         $this->sarLogPath = self::SAR_LOG_PATHS[0];
         $this->dateFormat = 'short';
         $this->today = $this->todayShort;
@@ -28781,7 +28804,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="index.php.sha256">
-5f60091f046303497452af20fd1d8310249ca812487bd37b7b4fd8961562adaa  index.php
+983c5872907d6c4058ee6d627068d4871cba391df2103cab799684e468851e28  index.php
 </file>
 
 <file path="imh-snap-stat.php">
@@ -28798,7 +28821,7 @@ if ($isCPanelServer) {
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.1.9
+ * Version: 0.2.0
  */
 
 
@@ -30169,29 +30192,42 @@ class SarDataProcessor
             $this->yesterdayShort,
             $this->todayShort,
             $this->yesterdayLong,
-            $this->todayLong
+            $this->todayLong,
         ];
+
+        $bestPath = null;
+        $bestDate = null;
+        $bestMtime = -1;
 
         foreach (self::SAR_LOG_PATHS as $path) {
             foreach ($candidates as $date) {
-                if (file_exists($path . $date)) {
-                    $this->sarLogPath = $path;
-                    $this->dateFormat = (strlen($date) === 2) ? 'short' : 'long';
+                $file = $path . $date;
+                if (!file_exists($file)) continue;
 
-                    if ($this->dateFormat === 'long') {
-                        $this->today = $this->todayLong;
-                        $this->yesterday = $this->yesterdayLong;
-                    } else {
-                        $this->today = $this->todayShort;
-                        $this->yesterday = $this->yesterdayShort;
-                    }
-
-                    return;
+                $mtime = @filemtime($file);
+                if ($mtime !== false && $mtime > $bestMtime) {
+                    $bestMtime = $mtime;
+                    $bestPath = $path;
+                    $bestDate = $date;
                 }
             }
         }
 
-        // fallback: assume short format
+        if ($bestPath !== null && $bestDate !== null) {
+            $this->sarLogPath = $bestPath;
+            $this->dateFormat = (strlen($bestDate) === 2) ? 'short' : 'long';
+
+            if ($this->dateFormat === 'long') {
+                $this->today = $this->todayLong;
+                $this->yesterday = $this->yesterdayLong;
+            } else {
+                $this->today = $this->todayShort;
+                $this->yesterday = $this->yesterdayShort;
+            }
+            return;
+        }
+
+        // fallback
         $this->sarLogPath = self::SAR_LOG_PATHS[0];
         $this->dateFormat = 'short';
         $this->today = $this->todayShort;
@@ -30524,7 +30560,7 @@ if ($isCPanelServer) {
 </file>
 
 <file path="imh-snap-stat.php.sha256">
-5f60091f046303497452af20fd1d8310249ca812487bd37b7b4fd8961562adaa  imh-snap-stat.php
+983c5872907d6c4058ee6d627068d4871cba391df2103cab799684e468851e28  imh-snap-stat.php
 </file>
 
 </files>
