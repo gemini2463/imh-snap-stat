@@ -6,7 +6,7 @@ set -eu
 #set -x
 
 # Script metadata
-readonly SCRIPT_VERSION="0.2.0"
+readonly SCRIPT_VERSION="0.2.1"
 readonly SCRIPT_NAME="imh-snap-stat"
 readonly BASE_URL="https://raw.githubusercontent.com/gemini2463/$SCRIPT_NAME/master"
 

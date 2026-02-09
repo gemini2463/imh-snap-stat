@@ -1,4 +1,4 @@
-# SnapStat (imh-snap-stat), v0.2.0
+# SnapStat (imh-snap-stat), v0.2.1
 
 sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 
@@ -81,3 +81,7 @@ sys-snap and sysstat Web Interface for cPanel/WHM and CWP
 ## v0.2.0
 
 - Fix for determineSarLogPath() edge cases when /var/log/sa stale files exist.
+
+## v0.2.1
+
+- Fix for fatal errors when sys-snap reports numeric UIDs by normalizing user labels and using stable placeholder names for unresolved accounts (PHP 5/7 compatible).

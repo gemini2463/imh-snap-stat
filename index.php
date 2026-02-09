@@ -11,7 +11,7 @@
  *   - CWP:       /usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php
  *
  * Maintainer: InMotion Hosting
- * Version: 0.2.0
+ * Version: 0.2.1
  */
 
 
@@ -34,6 +34,15 @@
 // ==========================
 
 declare(strict_types=1);
+
+//Polyfill function for PHP 5/7
+
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strpos($haystack, $needle) === 0;
+    }
+}
 
 $isCPanelServer = (
     (is_dir('/usr/local/cpanel') || is_dir('/var/cpanel') || is_dir('/etc/cpanel')) && (is_file('/usr/local/cpanel/cpanel') || is_file('/usr/local/cpanel/version'))
@@ -1037,6 +1046,48 @@ if (SYS_SNAP_EXECUTABLE === false) {
 
 
 
+    // Fix usernames if failing
+
+    function imh_normalize_user_label(string $userRaw): array
+    {
+        // Returns: [label, meta]
+        // label is always a NON-numeric string safe for array keys and display.
+        $userRaw = trim($userRaw);
+
+        $meta = [
+            'raw' => $userRaw,
+            'uid' => null,
+            'resolved' => false,
+        ];
+
+        // If sys-snap printed a numeric UID, try to resolve it; else use as-is.
+        if ($userRaw !== '' && ctype_digit($userRaw)) {
+            $uid = (int)$userRaw;
+            $meta['uid'] = $uid;
+
+            // Best-effort resolution (does not require shelling out)
+            if (function_exists('posix_getpwuid')) {
+                $pw = @posix_getpwuid($uid);
+                if (is_array($pw) && !empty($pw['name']) && is_string($pw['name'])) {
+                    $meta['resolved'] = true;
+                    // IMPORTANT: prefix to prevent numeric-string keys ever becoming ints
+                    return ['user:' . $pw['name'], $meta];
+                }
+            }
+
+            // Fallback: stable placeholder
+            return ['unknown-uid-' . $uid, $meta];
+        }
+
+        // Non-numeric usernames: still prefix so array keys are never numeric
+        if ($userRaw === '') {
+            return ['unknown-user', $meta];
+        }
+
+        return ['user:' . $userRaw, $meta];
+    }
+
+
     // Parse output
 
     function parseSysSnap($text)
@@ -1051,13 +1102,30 @@ if (SYS_SNAP_EXECUTABLE === false) {
 
             // User Section
             if (preg_match('/^user:\s+(\S+)/', $line, $m)) {
-                $currentUser = $m[1];
+                $raw = (string)$m[1];
+
+                [$key, $meta] = imh_normalize_user_label($raw);
+
+                // Derive a display label (strip the "user:" prefix for normal names)
+                $display = $key;
+                if (str_starts_with($display, 'user:')) {
+                    $display = substr($display, 5);
+                }
+
+                $currentUser = $key;
+
                 $results[$currentUser] = [
+                    'username' => $display,   // ALWAYS a string suitable for UI/links
+                    'user_raw' => $meta['raw'],
+                    'uid'      => $meta['uid'],
+                    'resolved' => $meta['resolved'],
+
                     'cpu-score' => null,
                     'cpu-list' => [],
                     'memory-score' => null,
                     'memory-list' => []
                 ];
+
                 $currentSection = null;
                 continue;
             }
@@ -1117,12 +1185,13 @@ if (SYS_SNAP_EXECUTABLE === false) {
     // Output data for the pie graph
 
     $pieDataCPU = [];
-    foreach ($data as $user => $vals) {
+    foreach ($data as $key => $vals) {
+        $label = (string)($vals['username'] ?? $key);  // always a string display name
         $pieDataCPU[] = [
-            'user' => $user,
-            'cpuScore' => floatval($vals['cpu-score'])
+            'user' => $label,
+            'cpuScore' => (float)($vals['cpu-score'] ?? 0)
         ];
-    };
+    }
 
     $pieDataMemory = [];
     // Sort $data by memory-score descending for the pie chart
@@ -1130,12 +1199,13 @@ if (SYS_SNAP_EXECUTABLE === false) {
     uasort($sortedByMemory, function ($a, $b) {
         return floatval($b['memory-score']) <=> floatval($a['memory-score']);
     });
-    foreach ($sortedByMemory as $user => $vals) {
+    foreach ($sortedByMemory as $key => $vals) {
+        $label = (string)($vals['username'] ?? $key);
         $pieDataMemory[] = [
-            'user' => $user,
-            'memoryScore' => floatval($vals['memory-score'])
+            'user' => $label,
+            'memoryScore' => (float)($vals['memory-score'] ?? 0)
         ];
-    };
+    }
 
     echo "<script>
 window.sysSnapPieDataCPU = " . json_encode($pieDataCPU) . ";
@@ -1161,6 +1231,7 @@ window.sysSnapPieDataMemory = " . json_encode($pieDataMemory) . ";
 
     foreach ($data as $user => $vals) {
         // Anchor ID for the user section
+        $user = (string)($vals['username'] ?? $key); // display label, always string
         $anchor = 'user-' . rawurlencode($user);
         $row_class = ($row_idx % 2 === 1) ? " class='odd-num-table-row'" : "";
         echo "<tr$row_class>";
@@ -1204,7 +1275,8 @@ window.sysSnapPieDataMemory = " . json_encode($pieDataMemory) . ";
 
     echo '<div class="imh-spacer imh-monospace">';
     foreach ($data as $user => $vals) {
-        $anchor = 'user-' . rawurlencode($user);
+        $user = (string)($vals['username'] ?? $key); // display label, always string
+        $anchor = 'user-' . rawurlencode($user);   
 
         // Unique ID for JS target
         $collapse_id = 'user-details-' . md5($user);
