@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>.</title>
+    <style>
+      .imh-box {
+  margin: 2em 0;
+  padding: 1em;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  display: block;
+}
+
+.imh-table-responsive {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.sys-snap-tables {
+  border-collapse: collapse;
+  margin: 2em 0;
+  background: #fafcff;
+  table-layout: fixed;
+  width: 100%;
+}
+.sys-snap-tables th, .sys-snap-tables td {
+  border: 1px solid #000;
+  padding: 4px 8px;
+}
+.sys-snap-tables thead {
+  background: #e6f2ff;
+  color: #333;
+  font-weight: 600;
+}
+.imh-piechart-col {
+  width: 50%;
+  vertical-align: top;
+}
+
+.chart-container {
+  max-height: 800px !important;
+  max-width: 800px !important;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#PiechartUsersCPU, #PiechartUsersMemory {
+  width: 100% !important;
+  max-width: 100%;
+}
+    </style>
+  </head>
+  <body>
+    <div class="imh-box imh-table-responsive">
+      <table class="sys-snap-tables imh-width-full">
+        <thead>
+          <th class="imh-piechart-col">CPU Usage</th>
+          <th class="imh-piechart-col">Memory Usage</th>
+        </thead>
+        <tr class="imh-piechart-row">
+          <td class="imh-piechart-col">
+            <div id="PiechartUsersCPU"></div>
+          </td>
+          <td class="imh-piechart-col">
+            <div id="PiechartUsersMemory"></div>
+          </td>
+        </tr>
+        <tr>
+          <td colSpan="2" class="imh-piechart-col">
+            <div id="LinechartLoadavg"></div>
+          </td>
+        </tr>
+        <tr>
+          <td colSpan="2" class="imh-piechart-col">
+            <div id="LinechartPaging"></div>
+          </td>
+        </tr>
+      </table>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
