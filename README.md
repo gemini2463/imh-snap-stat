@@ -1,87 +1,51 @@
-# SnapStat (imh-snap-stat), v0.2.1
+# Email Solutions (imh-email-solutions), v0.0.1
 
-sys-snap and sysstat Web Interface for cPanel/WHM and CWP
+**Canonical name:** Email Solutions
 
-[![Demo Video](screenshot.png)](https://www.youtube.com/watch?v=l6C9AdDgy_I)
-[Demo Video on YouTube](https://www.youtube.com/watch?v=l6C9AdDgy_I)
+Root-only WHM/cPanel + CWP plugin for outbound mail sanity checks.
 
-- cPanel/WHM path: `/usr/local/cpanel/whostmgr/docroot/cgi/imh-snap-stat/index.php`
-- CWP path: `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-snap-stat.php`
+## Current feature set
 
-![Screenshot](screenshot2.png)
+### DNS Checks (default tab)
 
-# Installation
+Validates that outbound email-sending IP address(es) and the corresponding HELO name(s) have reasonable forward and reverse DNS:
 
-- Run as the Root user: `curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-snap-stat/master/install.sh | bash`
+- PTR (rDNS) exists for the sending IP
+- PTR hostname resolves back to the sending IP (forward-confirmed rDNS)
+- HELO hostname has A/AAAA
+- HELO A/AAAA includes the sending IP (best practice; may be intentionally different in some environments)
 
-[![Interquartile range](legend.png)](https://en.wikipedia.org/wiki/Interquartile_range)
+### Where settings come from
 
-# Files
+- **cPanel/WHM (Exim):**
+  - `/etc/mailips`
+  - `/etc/mailhelo`
+  - Reference: https://docs.cpanel.net/knowledge-base/email/how-to-configure-the-exim-outgoing-ip-address/
 
-## Shell installer
+- **CWP (Postfix):**
+  - Parses `/etc/postfix/master.cf` transport overrides for:
+    - `smtp_bind_address`
+    - `smtp_helo_name`
+  - Reference: https://wiki.centos-webpanel.com/postfix-send-email-from-dedicated-ip-address
 
-- install.sh
+## Installation
 
-## Main script
+Run as root:
 
-- index.php - Identical to `imh-snap-stat.php`.
-- index.php.sha256 - `sha256sum index.php > index.php.sha256`
-- imh-snap-stat.php - Identical to `index.php`.
-- imh-snap-stat.php.sha256 - `sha256sum imh-snap-stat.php > imh-snap-stat.php.sha256`
+```bash
+curl -fsSL https://raw.githubusercontent.com/gemini2463/imh-email-solutions/master/install.sh | bash
+```
 
-## Javascript
+## Paths
 
-- imh-snap-stat.js - Bundle React or any other javascript in this file.
-- imh-snap-stat.js.sha256 - `sha256sum imh-snap-stat.js > imh-snap-stat.js.sha256`
+- **cPanel/WHM:** `/usr/local/cpanel/whostmgr/docroot/cgi/imh-email-solutions/index.php`
+- **CWP:** `/usr/local/cwpsrv/htdocs/resources/admin/modules/imh-email-solutions.php`
 
-## Icon
+## Files
 
-- imh-snap-stat.png - [48x48 png image](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-plugin-files/#icons)
-- imh-snap-stat.png.sha256 - `sha256sum imh-snap-stat.png > imh-snap-stat.png.sha256`
-
-## cPanel conf
-
-- imh-snap-stat.conf - [AppConfig Configuration File](https://api.docs.cpanel.net/guides/guide-to-whm-plugins/guide-to-whm-plugins-appconfig-configuration-file)
-- imh-snap-stat.conf.sha256 - `sha256sum imh-snap-stat.conf > imh-snap-stat.conf.sha256`
-
-## CWP include
-
-- imh-plugins.php - [CWP include](https://wiki.centos-webpanel.com/how-to-build-a-cwp-module)
-- imh-plugins.php.sha256 - `sha256sum imh-plugins.php > imh-plugins.php.sha256`
-
-## sha256 one-liner
-
-- `for file in index.php imh-plugins.php imh-snap-stat.conf imh-snap-stat.js imh-snap-stat.php imh-snap-stat.png; do sha256sum "$file" > "$file.sha256"; done`
-
-# Changelog
-
-## v0.1.6 - Release
-
-- Release
-
-## v0.1.7
-
-- Fix for some newer OS's that use a new format to store sysstat logs.
-
-## v0.1.8
-
-- Fixed error handling of time-range inputs that fail to return sys-snap output.
-- "Scores from..." now shows the actual time-range, specifically when sys-snap has been running for less than 24 hours.
-- "Scores from..." now shows the local time zone.
-- Added step to `chmod 0600` cache files when created.
-- Implemented statistical outlier detection (IQR method) for all numeric columns in the sar data table. Cells with statistically and operationally significant values are now automatically highlighted.
-- `/opt/imh-sys-snap/bin/` path to the sys-snap.pl file is no longer hard-coded; it now checks other possible paths.
-- Fixed caching functions to prevent path traversals and race conditions.
-
-## v0.1.9
-
-- Set the IMH-installed sys-snap.pl path as default instead of cPanel's /root/sys-snap.pl path.
-- Install script CWP 3rdparty.php fixes for a double-insertion bug.
-
-## v0.2.0
-
-- Fix for determineSarLogPath() edge cases when /var/log/sa stale files exist.
-
-## v0.2.1
-
-- Fix for fatal errors when sys-snap reports numeric UIDs by normalizing user labels and using stable placeholder names for unresolved accounts (PHP 5/7 compatible).
+- `index.php` — main UI
+- `imh-email-solutions.php` — CWP module wrapper (includes `index.php`)
+- `imh-email-solutions.conf` — WHM appconfig
+- `imh-email-solutions.png` — icon
+- `imh-email-solutions.js` — reserved for future
+- `install.sh` — installer
